@@ -99,6 +99,8 @@ func (c *client) writer() {
 
 // Serve accepts clients until ctx ends or the listener fails.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
 	evs, cancel := s.store.Subscribe()
 	defer cancel()
 	s.mu.Lock()
@@ -165,6 +167,18 @@ func (s *Server) setDown(down bool) {
 	}
 	if down {
 		s.closeAll(false)
+		s.drainTakes()
+	}
+}
+
+// drainTakes forgets queued connects: Sode timed them out long ago.
+func (s *Server) drainTakes() {
+	for {
+		select {
+		case <-s.takes:
+		default:
+			return
+		}
 	}
 }
 
@@ -256,6 +270,9 @@ func (s *Server) takeLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case t := <-s.takes:
+			if !s.store.Snapshot().Up {
+				continue
+			}
 			if err := s.router.Take(t.out, t.in); err != nil {
 				s.logf("take %d <- %d: %v", t.out, t.in, err)
 			}

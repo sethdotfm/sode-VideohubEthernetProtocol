@@ -398,7 +398,9 @@ func TestFold(t *testing.T) {
 }
 
 func TestTakesReachRouterInOrder(t *testing.T) {
-	s := New(state.New(), &slowRouter{}, nil, nil)
+	st := state.New()
+	st.SetUp("t", []string{"a"}, make([]string, 20), nil, nil)
+	s := New(st, &slowRouter{}, nil, nil)
 	r := s.router.(*slowRouter)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -439,4 +441,18 @@ func (r *slowRouter) Take(out, in int) error {
 	r.got = append(r.got, out)
 	r.mu.Unlock()
 	return nil
+}
+
+func TestQueuedTakesDroppedWhileHubDown(t *testing.T) {
+	st := state.New()
+	st.SetUp("t", []string{"a"}, make([]string, 2), nil, nil)
+	r := &slowRouter{}
+	s := New(st, r, nil, nil)
+	s.takes <- take{1, 0}
+	s.takes <- take{0, 0}
+	st.SetDown()
+	s.setDown(true)
+	if len(s.takes) != 0 {
+		t.Fatalf("%d takes still queued after hub down", len(s.takes))
+	}
 }
