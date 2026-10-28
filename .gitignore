@@ -1,0 +1,17 @@
+# build
+/bin/
+/vep
+/vhsim
+*.test
+*.out
+
+# runtime data
+/data/
+
+# worktrees
+/.worktrees/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/

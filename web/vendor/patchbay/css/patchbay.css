@@ -1,0 +1,1837 @@
+/* ==========================================================================
+   PATCHBAY — Component layer
+   Sits on top of Bootstrap 5. Every value here comes from a token in
+   patchbay.tokens.css; if you need a new colour or size, add a token.
+
+   Contents
+     01  Reset & base
+     02  Scrollbars
+     03  Layout: page, panes, panels, headers
+     04  Toolbar
+     05  Buttons
+     06  Chips (token buttons)
+     07  Form controls
+     08  Checkbox, radio, switch
+     09  Form rows (the label/control grid)
+     10  Tabs
+     11  Dropdown menus
+     12  Modals
+     13  Drawers
+     14  Progress & spinners
+     15  Tables & data grid
+     16  Status
+     17  Routing roles & signal identity
+     18  Summary bar
+     19  Window state borders
+     20  Utilities
+   ========================================================================== */
+
+
+/* 01  RESET & BASE ======================================================== */
+
+html {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--pb-surface-base);
+  color: var(--pb-text);
+  font-family: var(--pb-font);
+  font-size: var(--pb-text-sm);
+  font-weight: var(--pb-weight-normal);
+  line-height: var(--pb-leading-normal);
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  /* Device UIs have a floor below which the matrix cannot usefully shrink.
+     Pick the floor once, here, and let pages scroll horizontally instead of
+     reflowing a routing grid into something unreadable. */
+  min-width: 680px;
+  overflow-x: auto;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* One focus treatment for the whole system. Keyboard users get a visible
+   ring; pointer users never see it. Never suppress outlines entirely. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--pb-accent);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: var(--pb-accent-muted);
+  color: var(--pb-text-on-accent);
+}
+
+.pb-code,
+code,
+kbd {
+  font-family: var(--pb-font-mono);
+  font-size: var(--pb-text-xs);
+}
+
+
+/* 02  SCROLLBARS ========================================================== */
+
+.pb-scroll,
+.pb-pane,
+.pb-grid-body,
+textarea {
+  scrollbar-color: var(--pb-scroll-thumb) var(--pb-scroll-track);
+  scrollbar-width: thin;
+}
+
+.pb-scroll::-webkit-scrollbar,
+.pb-pane::-webkit-scrollbar,
+.pb-grid-body::-webkit-scrollbar,
+textarea::-webkit-scrollbar {
+  width: var(--pb-scroll-w);
+  height: var(--pb-scroll-w);
+}
+
+.pb-scroll::-webkit-scrollbar-track,
+.pb-pane::-webkit-scrollbar-track,
+.pb-grid-body::-webkit-scrollbar-track,
+textarea::-webkit-scrollbar-track {
+  background: var(--pb-scroll-track);
+}
+
+.pb-scroll::-webkit-scrollbar-thumb,
+.pb-pane::-webkit-scrollbar-thumb,
+.pb-grid-body::-webkit-scrollbar-thumb,
+textarea::-webkit-scrollbar-thumb {
+  background-color: var(--pb-scroll-thumb);
+  border-radius: 0;
+  border: 3px solid var(--pb-scroll-track);
+}
+
+.pb-scroll::-webkit-scrollbar-thumb:hover,
+.pb-pane::-webkit-scrollbar-thumb:hover,
+.pb-grid-body::-webkit-scrollbar-thumb:hover,
+textarea::-webkit-scrollbar-thumb:hover {
+  background-color: var(--pb-surface-hover);
+}
+
+.pb-scroll::-webkit-scrollbar-corner,
+.pb-pane::-webkit-scrollbar-corner {
+  background: var(--pb-scroll-track);
+}
+
+
+/* 03  LAYOUT ============================================================== */
+
+/* The page shell: a column that owns the full viewport so panes inside can
+   use percentage heights without every ancestor needing height:100%. */
+.pb-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* A horizontal split. Children are .pb-pane. */
+.pb-split {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.pb-split--vertical {
+  flex-direction: column;
+}
+
+.pb-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  position: relative;
+}
+
+/* The hard rule between two panes. Put it on the left-hand pane. */
+.pb-pane--divided {
+  border-right: var(--pb-accent-bar-w) solid var(--pb-edge-hard);
+}
+
+.pb-split--vertical > .pb-pane--divided {
+  border-right: 0;
+  border-bottom: var(--pb-accent-bar-w) solid var(--pb-edge-hard);
+}
+
+/* A draggable divider. Pair with your own drag JS. */
+.pb-split-handle {
+  flex: 0 0 var(--pb-split-w);
+  background: var(--pb-surface-high);
+  border-left: 1px solid var(--pb-edge-hard);
+  border-right: 1px solid var(--pb-edge-hard);
+  cursor: col-resize;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--pb-edge-light) 0 1px,
+    transparent 1px 3px
+  );
+  background-size: 9px 24px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.pb-split-handle:hover {
+  background-color: var(--pb-surface-control);
+}
+
+/* A panel: the standard content container. */
+.pb-panel {
+  background: var(--pb-surface-raised);
+  border: var(--pb-border-w) solid var(--pb-edge-soft);
+  border-radius: var(--pb-radius-panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pb-panel--flush {
+  border: 0;
+  border-radius: 0;
+}
+
+/* A section header: a small tracked caps label on the panel's own surface,
+   divided by a hairline. Chrome whispers so content can speak. */
+.pb-header {
+  align-items: center;
+  background: transparent;
+  border-bottom: var(--pb-border-w) solid var(--pb-edge-soft);
+  color: var(--pb-text-muted);
+  display: flex;
+  flex: 0 0 auto;
+  font-size: var(--pb-text-xs);
+  font-weight: var(--pb-weight-bold);
+  gap: var(--pb-space-3);
+  letter-spacing: var(--pb-tracking-label);
+  line-height: var(--pb-leading-tight);
+  min-height: var(--pb-toolbar-h);
+  padding: var(--pb-space-2) var(--pb-space-5);
+  text-transform: uppercase;
+}
+
+.pb-header--sm {
+  font-size: var(--pb-text-sm);
+  min-height: var(--pb-control-h);
+}
+
+.pb-header__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-1);
+}
+
+/* Content body inside a panel or modal. */
+.pb-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--pb-space-7) var(--pb-space-5);
+}
+
+.pb-body--flush { padding: 0; }
+
+/* Dividers. */
+.pb-divider {
+  background: var(--pb-edge-soft);
+  border: 0;
+  height: 1px;
+  margin: var(--pb-space-4) 0;
+  opacity: 1;
+}
+
+.pb-divider--hard {
+  background: var(--pb-edge-hard);
+  height: 2px;
+}
+
+.pb-divider--vertical {
+  height: auto;
+  width: 1px;
+  margin: 0 var(--pb-space-3);
+  align-self: stretch;
+}
+
+/* Notes and helper text. */
+.pb-note {
+  color: var(--pb-text-muted);
+  font-size: var(--pb-text-sm);
+  margin: var(--pb-space-1) 0 0;
+}
+
+.pb-note--error { color: var(--pb-status-error); }
+.pb-note--warn  { color: var(--pb-status-warn); }
+
+
+/* 04  TOOLBAR ============================================================= */
+
+/* The icon-button strip that tops nearly every pane. Overrides Bootstrap's
+   .navbar padding so the 28px buttons set the height, not the container. */
+.pb-toolbar,
+.navbar.pb-toolbar {
+  align-items: center;
+  background: var(--pb-surface-high);
+  border-bottom: var(--pb-border-w) solid var(--pb-edge-hard);
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--pb-space-1);
+  justify-content: flex-start;
+  min-height: var(--pb-toolbar-h);
+  padding: var(--pb-space-1) var(--pb-space-2);
+}
+
+.pb-toolbar__group {
+  align-items: center;
+  display: flex;
+  gap: var(--pb-space-1);
+}
+
+.pb-toolbar__spacer { margin-left: auto; }
+
+/* Vertical hairline between toolbar groups. */
+.pb-toolbar__sep {
+  align-self: stretch;
+  background: var(--pb-edge-soft);
+  flex: 0 0 1px;
+  margin: var(--pb-space-1) var(--pb-space-3);
+  width: 1px;
+}
+
+.pb-toolbar__title {
+  color: var(--pb-text-strong);
+  font-weight: var(--pb-weight-bold);
+  padding: 0 var(--pb-space-3);
+  white-space: nowrap;
+}
+
+
+/* 05  BUTTONS ============================================================= */
+
+.pb-btn,
+.btn.pb-btn {
+  align-items: center;
+  background-color: var(--pb-surface-control);
+  border: var(--pb-border-w) solid transparent;
+  border-radius: var(--pb-radius-control);
+  box-shadow: var(--pb-shadow-control);
+  color: var(--pb-text);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: var(--pb-text-sm);
+  font-weight: var(--pb-weight-medium);
+  gap: var(--pb-space-2);
+  height: var(--pb-control-h);
+  justify-content: center;
+  letter-spacing: var(--pb-tracking-button);
+  line-height: 1;
+  margin: 0;
+  overflow: hidden;
+  padding: 0 var(--pb-space-5);
+  text-overflow: ellipsis;
+  text-decoration: none;
+  transition: background-color var(--pb-motion-fast) var(--pb-ease);
+  white-space: nowrap;
+}
+
+.pb-btn:hover,
+.btn.pb-btn:hover {
+  background-color: var(--pb-surface-hover);
+  color: var(--pb-text);
+}
+
+.pb-btn:active,
+.btn.pb-btn:active {
+  background-color: var(--pb-surface-control);
+  box-shadow: inset 0 1px 2px 0 var(--pb-overlay-press);
+}
+
+.pb-btn:disabled,
+.pb-btn.disabled,
+.btn.pb-btn:disabled {
+  background-color: var(--pb-surface-control);
+  box-shadow: none;
+  color: var(--pb-text-disabled);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* --- Selected / latched -------------------------------------------------
+   A control that reflects state, not an action. This is the single most
+   important button variant in a console UI: it answers "is it on?". */
+.pb-btn--selected,
+.pb-btn[aria-pressed="true"],
+.pb-btn-check:checked + .pb-btn {
+  background-color: var(--pb-accent);
+  color: var(--pb-text-on-accent);
+}
+
+.pb-btn--selected:hover,
+.pb-btn[aria-pressed="true"]:hover,
+.pb-btn-check:checked + .pb-btn:hover {
+  background-color: var(--pb-accent-hover);
+}
+
+/* --- Outline: the secondary / cancel action ---------------------------- */
+.pb-btn--outline {
+  background-color: transparent;
+  border-color: var(--pb-surface-control);
+  box-shadow: none;
+}
+
+.pb-btn--outline:hover {
+  background-color: var(--pb-overlay-hover);
+  border-color: var(--pb-surface-hover);
+}
+
+.pb-btn--outline:disabled,
+.pb-btn--outline.disabled {
+  background-color: transparent;
+  border-color: var(--pb-surface-control);
+}
+
+/* --- Transparent: toolbar and title-bar icons -------------------------- */
+/* Ghost only drops the plate; pair with --icon for a square icon button. */
+.pb-btn--ghost {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.pb-btn--ghost:hover { background-color: var(--pb-overlay-hover); }
+.pb-btn--ghost:active { background-color: var(--pb-edge-light); }
+
+/* --- Icon-only, square ------------------------------------------------- */
+.pb-btn--icon {
+  padding: 0;
+  width: var(--pb-icon-btn-w);
+}
+
+.pb-btn--icon-lg {
+  height: var(--pb-control-h-lg);
+  padding: 0;
+  width: var(--pb-control-h-lg);
+}
+
+/* --- Commit: unsaved changes exist ------------------------------------- */
+.pb-btn--commit {
+  background-color: var(--pb-commit);
+  color: var(--pb-text-on-accent);
+}
+
+.pb-btn--commit:hover { background-color: var(--pb-commit-hover); }
+
+/* --- Danger: irreversible ---------------------------------------------- */
+.pb-btn--danger {
+  background-color: var(--pb-status-error);
+  color: var(--pb-text-on-accent);
+}
+
+.pb-btn--danger:hover { background-color: var(--pb-danger-hover); }
+
+/* --- Sizes ------------------------------------------------------------- */
+.pb-btn--sm {
+  font-size: var(--pb-text-xs);
+  height: var(--pb-control-h-sm);
+  padding: 0 var(--pb-space-3);
+}
+
+.pb-btn--lg {
+  height: var(--pb-control-h-lg);
+  padding: 0 var(--pb-space-7);
+}
+
+.pb-btn--block {
+  display: flex;
+  width: 100%;
+}
+
+/* A hidden input paired with a label-styled button, for radio/checkbox
+   groups that must look like latching hardware buttons. */
+.pb-btn-check {
+  clip: rect(0, 0, 0, 0);
+  pointer-events: none;
+  position: absolute;
+}
+
+.pb-btn-check:focus-visible + .pb-btn {
+  outline: 2px solid var(--pb-accent);
+  outline-offset: 1px;
+}
+
+/* A segmented group: buttons butt together into one strip. */
+.pb-btn-group {
+  display: inline-flex;
+}
+
+.pb-btn-group .pb-btn {
+  border-radius: 0;
+  margin: 0;
+}
+
+.pb-btn-group .pb-btn:first-child {
+  border-bottom-left-radius: var(--pb-radius-control);
+  border-top-left-radius: var(--pb-radius-control);
+}
+
+.pb-btn-group .pb-btn:last-child {
+  border-bottom-right-radius: var(--pb-radius-control);
+  border-top-right-radius: var(--pb-radius-control);
+}
+
+.pb-btn-group .pb-btn + .pb-btn {
+  border-left: 1px solid var(--pb-edge-hard);
+}
+
+
+/* 06  CHIPS =============================================================== */
+
+/* A compact, removable or selectable token. Rounder than a button on
+   purpose — the heavy border is what tells you it is data, not a control. */
+.pb-chip {
+  align-items: center;
+  background: var(--pb-surface-control);
+  border: 2px solid var(--pb-overlay-press);
+  border-radius: var(--pb-radius-chip);
+  color: var(--pb-text-strong);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: var(--pb-text-sm);
+  font-weight: var(--pb-weight-normal);
+  gap: var(--pb-space-1);
+  line-height: 14px;
+  padding: var(--pb-space-1) var(--pb-space-4);
+}
+
+.pb-chip:hover:not(:disabled):not(.pb-chip--selected) {
+  border-color: var(--pb-accent);
+}
+
+.pb-chip--selected,
+.pb-chip[aria-pressed="true"] {
+  background: var(--pb-accent);
+  border-color: var(--pb-accent);
+  color: var(--pb-text-on-accent);
+}
+
+.pb-chip--static {
+  border-color: var(--pb-edge-light);
+  cursor: default;
+}
+
+.pb-chip__remove {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--pb-text-md);
+  justify-content: center;
+  line-height: 1;
+  opacity: 0.75;
+  padding: 0 0 0 var(--pb-space-1);
+}
+
+.pb-chip__remove:hover { opacity: 1; }
+
+/* A text field that holds chips. contenteditable in practice. */
+.pb-chip-input {
+  background: var(--pb-surface-sunken);
+  border: var(--pb-border-w) solid var(--pb-edge);
+  color: var(--pb-text);
+  cursor: text;
+  min-height: var(--pb-control-h);
+  padding: var(--pb-space-1) var(--pb-space-3);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.pb-chip-input:focus-within { border-color: var(--pb-accent); }
+
+.pb-chip-input:empty:not(:focus)::before {
+  color: var(--pb-text-disabled);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+/* Chips sitting inside the input keep the resting look, so a chip in a
+   field never looks like a toggled-on control. */
+.pb-chip-input .pb-chip {
+  background: var(--pb-surface-control);
+  border-color: var(--pb-edge-light);
+  color: var(--pb-text-strong);
+  margin: 0 var(--pb-space-1);
+  user-select: none;
+  vertical-align: middle;
+}
+
+
+/* 07  FORM CONTROLS ======================================================= */
+
+/* Inputs are black wells, buttons are raised grey blocks. That contrast is
+   the whole affordance language: lifted = you press it, sunken = you type
+   in it. Nothing is rounded. */
+.pb-input,
+.pb-select,
+.pb-textarea,
+.form-control.pb-input,
+.form-select.pb-select {
+  background-color: var(--pb-surface-sunken);
+  border: var(--pb-border-w) solid var(--pb-edge);
+  border-radius: var(--pb-radius-input);
+  box-shadow: none;
+  color: var(--pb-text);
+  display: inline-block;
+  font-family: inherit;
+  font-size: var(--pb-text-sm);
+  font-weight: var(--pb-weight-normal);
+  height: var(--pb-control-h);
+  margin: 0;
+  overflow: hidden;
+  padding: var(--pb-space-2) var(--pb-space-3);
+  text-overflow: ellipsis;
+  transition: border-color var(--pb-motion-fast) var(--pb-ease);
+  white-space: nowrap;
+  width: 100%;
+}
+
+.pb-input:focus,
+.pb-select:focus,
+.pb-textarea:focus,
+.form-control.pb-input:focus,
+.form-select.pb-select:focus {
+  background-color: var(--pb-surface-sunken);
+  border-color: var(--pb-accent);
+  /* Doubles the border to 2px so focus is not signalled by hue alone. */
+  box-shadow: 0 0 0 1px var(--pb-accent);
+  color: var(--pb-text);
+  outline: none;
+}
+
+.pb-input::placeholder,
+.pb-textarea::placeholder {
+  color: var(--pb-text-disabled);
+}
+
+/* Disabled: the control is present but not yours to change. Keep the
+   border so the field's footprint still reads in a dense form. */
+.pb-input:disabled,
+.pb-select:disabled,
+.pb-textarea:disabled {
+  background-color: transparent;
+  border-color: var(--pb-surface-high);
+  color: var(--pb-text-disabled);
+  cursor: not-allowed;
+}
+
+/* Read-only: the value matters, the box does not. Strip the chrome so the
+   value reads as text and the eye skips the field. */
+.pb-input[readonly],
+.pb-input[readonly]:focus,
+.pb-textarea[readonly] {
+  background-color: transparent;
+  border-color: transparent;
+  padding-left: 0;
+}
+
+.pb-input--invalid,
+.pb-input:invalid {
+  border-color: var(--pb-status-error);
+}
+
+.pb-textarea {
+  height: auto;
+  min-height: calc(var(--pb-control-h) * 3);
+  overflow: auto;
+  resize: vertical;
+  white-space: pre-wrap;
+}
+
+.pb-textarea--fixed { resize: none; }
+
+/* Width helpers — dense forms need explicit widths far more than fluid ones. */
+.pb-w-xs { width: 50px; }
+.pb-w-sm { width: 80px; }
+.pb-w-md { width: 140px; }
+.pb-w-lg { width: 200px; }
+.pb-w-xl { width: 320px; }
+.pb-w-auto { width: auto; }
+
+/* --- Select ------------------------------------------------------------
+   Native <select> with the arrow drawn by the wrapper, because the native
+   arrow cannot be themed and looks like a different product. */
+.pb-select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: var(--pb-space-8);
+}
+
+.pb-select-wrap {
+  display: inline-block;
+  position: relative;
+  width: 100%;
+}
+
+.pb-select-wrap::after {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--pb-text-muted);
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  right: var(--pb-space-4);
+  top: 50%;
+  transform: translateY(-40%);
+}
+
+.pb-select-wrap:has(.pb-select:disabled)::after {
+  border-top-color: var(--pb-text-disabled);
+}
+
+.pb-select option {
+  background: var(--pb-surface-sunken);
+  color: var(--pb-text);
+}
+
+/* --- Number stepper ---------------------------------------------------
+   Native spinners are tiny and inconsistent across engines, so they are
+   hidden and replaced by a stacked pair drawn on the wrapper. */
+.pb-number-wrap {
+  display: inline-block;
+  position: relative;
+  width: 100%;
+}
+
+.pb-number-wrap .pb-input {
+  padding-right: var(--pb-space-8);
+}
+
+.pb-number-wrap input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.pb-number-wrap input::-webkit-outer-spin-button,
+.pb-number-wrap input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.pb-number-wrap::before,
+.pb-number-wrap::after {
+  align-items: center;
+  background-color: var(--pb-surface-control);
+  color: var(--pb-text-muted);
+  display: inline-flex;
+  font-size: var(--pb-text-2xs);
+  height: 13px;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+  position: absolute;
+  right: var(--pb-border-w);
+  width: 18px;
+}
+
+.pb-number-wrap::after {
+  border-bottom: 1px solid var(--pb-edge-hard);
+  content: "\25B2";
+  top: var(--pb-border-w);
+}
+
+.pb-number-wrap::before {
+  bottom: var(--pb-border-w);
+  content: "\25BC";
+}
+
+/* --- Input group: a control with an attached unit or button ----------- */
+.pb-input-group {
+  display: inline-flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.pb-input-group > .pb-input { flex: 1 1 auto; width: auto; }
+
+.pb-input-group__addon {
+  align-items: center;
+  background: var(--pb-surface-high);
+  border: var(--pb-border-w) solid var(--pb-edge);
+  border-left: 0;
+  color: var(--pb-text-muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: var(--pb-text-xs);
+  padding: 0 var(--pb-space-3);
+}
+
+/* --- Colour swatch input --------------------------------------------- */
+.pb-input[type="color"] {
+  cursor: pointer;
+  padding: 2px;
+  width: 44px;
+}
+
+/* --- Range / fader --------------------------------------------------- */
+.pb-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  height: var(--pb-control-h);
+  width: 100%;
+}
+
+.pb-range::-webkit-slider-runnable-track {
+  background: var(--pb-surface-sunken);
+  border: 1px solid var(--pb-edge);
+  height: 6px;
+}
+
+.pb-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  background: var(--pb-surface-hover);
+  border: 1px solid var(--pb-edge-hard);
+  border-radius: 0;
+  height: 18px;
+  margin-top: -7px;
+  width: 11px;
+}
+
+.pb-range::-moz-range-track {
+  background: var(--pb-surface-sunken);
+  border: 1px solid var(--pb-edge);
+  height: 6px;
+}
+
+.pb-range::-moz-range-thumb {
+  background: var(--pb-surface-hover);
+  border: 1px solid var(--pb-edge-hard);
+  border-radius: 0;
+  height: 18px;
+  width: 11px;
+}
+
+
+/* 08  CHECKBOX, RADIO, SWITCH ============================================ */
+
+.pb-check {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--pb-space-3);
+  min-height: var(--pb-control-h);
+}
+
+.pb-check__input,
+.form-check-input.pb-check__input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--pb-surface-sunken);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 14px;
+  border: var(--pb-border-w) solid var(--pb-edge);
+  cursor: pointer;
+  flex: 0 0 auto;
+  height: 18px;
+  margin: 0;
+  transition: background-color var(--pb-motion-fast) var(--pb-ease);
+  width: 18px;
+}
+
+.pb-check__input[type="checkbox"] { border-radius: var(--pb-radius-control); }
+.pb-check__input[type="radio"]    { border-radius: 50%; }
+
+.pb-check__input:hover:not(:disabled) { border-color: var(--pb-edge-light); }
+
+.pb-check__input:checked {
+  background-color: var(--pb-accent);
+  border-color: var(--pb-accent);
+}
+
+.pb-check__input[type="checkbox"]:checked {
+  background-image: var(--pb-glyph-check);
+}
+
+.pb-check__input[type="checkbox"]:indeterminate {
+  background-color: var(--pb-accent);
+  border-color: var(--pb-accent);
+  background-image: var(--pb-glyph-dash);
+}
+
+.pb-check__input[type="radio"]:checked {
+  background-image: var(--pb-glyph-radio);
+}
+
+.pb-check__input:disabled {
+  background-color: transparent;
+  border-color: var(--pb-surface-high);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.pb-check__input:disabled:checked { background-color: var(--pb-accent-muted); }
+
+.pb-check__label {
+  color: var(--pb-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.pb-check__input:disabled + .pb-check__label {
+  color: var(--pb-text-disabled);
+  cursor: not-allowed;
+}
+
+/* --- Switch -----------------------------------------------------------
+   Reserve the switch for things that take effect immediately. If the
+   change needs an Apply, use a checkbox — the sliding motion of a switch
+   promises the hardware already moved. */
+.pb-switch__input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--pb-surface-sunken);
+  border: var(--pb-border-w) solid var(--pb-edge);
+  border-radius: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+  height: 18px;
+  margin: 0;
+  position: relative;
+  transition: background-color var(--pb-motion-normal) var(--pb-ease);
+  width: 32px;
+}
+
+.pb-switch__input::after {
+  background: var(--pb-text-muted);
+  border-radius: 0;
+  content: "";
+  height: 12px;
+  left: 2px;
+  position: absolute;
+  top: 2px;
+  transition: transform var(--pb-motion-normal) var(--pb-ease),
+              background-color var(--pb-motion-normal) var(--pb-ease);
+  width: 12px;
+}
+
+.pb-switch__input:checked {
+  background-color: var(--pb-accent);
+  border-color: var(--pb-accent);
+}
+
+.pb-switch__input:checked::after {
+  background: var(--pb-text-on-accent);
+  transform: translateX(14px);
+}
+
+.pb-switch__input:disabled { cursor: not-allowed; opacity: 0.6; }
+
+
+/* 09  FORM ROWS =========================================================== */
+
+/* The workhorse layout: a right-aligned bold label and its control on one
+   32px line. Right-aligning the label puts it next to the thing it names,
+   which is what lets an operator scan a 20-row form in one pass. */
+.pb-form {
+  display: grid;
+  gap: var(--pb-space-1) var(--pb-space-3);
+  grid-template-columns: var(--pb-label-w, 120px) 1fr;
+  align-items: center;
+}
+
+.pb-form__label {
+  color: var(--pb-text-strong);
+  font-weight: var(--pb-weight-bold);
+  justify-self: end;
+  min-height: var(--pb-row-h);
+  display: flex;
+  align-items: center;
+  text-align: right;
+}
+
+.pb-form__label--after {
+  justify-self: start;
+  text-align: left;
+}
+
+.pb-form__field {
+  align-items: center;
+  display: flex;
+  gap: var(--pb-space-2);
+  min-height: var(--pb-row-h);
+}
+
+/* Something that spans both columns: a note, a divider, a nested group. */
+.pb-form__full {
+  grid-column: 1 / -1;
+}
+
+/* Vertical breathing room between logical groups of rows. */
+.pb-form__gap { grid-column: 1 / -1; height: var(--pb-space-7); }
+
+/* Wider label column variants. */
+.pb-form--label-sm  { --pb-label-w: 80px; }
+.pb-form--label-lg  { --pb-label-w: 180px; }
+
+/* Indent for dependent rows ("only applies when the box above is ticked"). */
+.pb-form__label--indent { padding-left: var(--pb-space-9); }
+
+.pb-fieldset {
+  border: var(--pb-border-w) solid var(--pb-edge-soft);
+  margin: 0 0 var(--pb-space-7);
+  padding: var(--pb-space-5);
+}
+
+.pb-fieldset > legend {
+  color: var(--pb-text-strong);
+  float: none;
+  font-size: var(--pb-text-sm);
+  font-weight: var(--pb-weight-bold);
+  padding: 0 var(--pb-space-3);
+  width: auto;
+}
+
+
+/* 10  TABS ================================================================ */
+
+/* Tabs are a segmented track: the selected tab is a solid block with a
+   2px accent bar across its top edge. */
+.pb-tabs {
+  background: var(--pb-surface-sunken);
+  border-bottom: var(--pb-border-w) solid var(--pb-edge-soft);
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--pb-space-1);
+  overflow-x: auto;
+  padding: var(--pb-space-2);
+  scrollbar-width: none;
+}
+
+.pb-tabs::-webkit-scrollbar { height: 0; }
+
+.pb-tab {
+  background: transparent;
+  border: 0;
+  border-radius: var(--pb-radius-control);
+  color: var(--pb-text-muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: var(--pb-text-sm);
+  font-weight: var(--pb-weight-medium);
+  padding: var(--pb-space-3) var(--pb-space-7);
+  transition: background-color var(--pb-motion-fast) var(--pb-ease),
+              color var(--pb-motion-fast) var(--pb-ease);
+  white-space: nowrap;
+}
+
+.pb-tab:hover { background: var(--pb-overlay-hover); color: var(--pb-text); }
+
+.pb-tab[aria-selected="true"],
+.pb-tab.active {
+  background: var(--pb-surface-control);
+  box-shadow: inset 0 2px 0 0 var(--pb-accent);
+  color: var(--pb-accent);
+}
+
+.pb-tab:disabled {
+  color: var(--pb-text-disabled);
+  cursor: not-allowed;
+}
+
+/* Second level. A darker plate, so nesting reads as depth without indenting. */
+.pb-tabs--sub {
+  background: var(--pb-surface-raised);
+}
+
+.pb-tabs--sub .pb-tab[aria-selected="true"],
+.pb-tabs--sub .pb-tab.active {
+  background: var(--pb-accent-subtab);
+}
+
+/* Vertical tabs, for settings trees with long labels. */
+.pb-tabs--vertical {
+  border-bottom: 0;
+  border-right: var(--pb-border-w) solid var(--pb-edge-hard);
+  flex-direction: column;
+  flex: 0 0 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  width: 200px;
+}
+
+.pb-tabs--vertical .pb-tab {
+  border-bottom: 0;
+  border-right: var(--pb-accent-bar-w) solid transparent;
+  padding: var(--pb-space-4) var(--pb-space-5);
+  text-align: left;
+}
+
+.pb-tabs--vertical .pb-tab[aria-selected="true"],
+.pb-tabs--vertical .pb-tab.active {
+  border-right-color: var(--pb-accent);
+}
+
+.pb-tabpanel { display: none; }
+.pb-tabpanel.active { display: block; }
+
+
+/* 11  DROPDOWN MENUS ====================================================== */
+
+/* A floating slab with a 1px rim and a hard offset shadow. Depth comes
+   from the offset, so an open menu separates from a busy grid behind it. */
+.pb-menu,
+.dropdown-menu.pb-menu {
+  background-color: var(--pb-surface-overlay);
+  border: 0;
+  border-radius: var(--pb-radius-overlay);
+  box-shadow: var(--pb-shadow-overlay);
+  margin: 0;
+  min-width: 200px;
+  padding: var(--pb-space-2);
+  width: max-content;
+  z-index: var(--pb-z-dropdown);
+}
+
+.pb-menu__item,
+.dropdown-item.pb-menu__item {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--pb-text);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: var(--pb-text-sm);
+  border-radius: var(--pb-radius-control);
+  gap: var(--pb-space-3);
+  min-height: 30px;
+  padding: 0 var(--pb-space-4);
+  text-align: left;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.pb-menu__item:hover,
+.dropdown-item.pb-menu__item:hover {
+  background-color: var(--pb-surface-hover);
+  color: var(--pb-text);
+}
+
+.pb-menu__item.active,
+.pb-menu__item[aria-current="true"] {
+  background-color: var(--pb-accent-wash);
+  color: var(--pb-accent);
+}
+
+.pb-menu__item:disabled,
+.pb-menu__item.disabled {
+  color: var(--pb-text-disabled);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* A trailing shortcut hint or state glyph. */
+.pb-menu__hint {
+  color: var(--pb-text-muted);
+  margin-left: auto;
+  padding-left: var(--pb-space-7);
+}
+
+.pb-menu__divider {
+  background: var(--pb-edge-hard);
+  border: 0;
+  height: 1px;
+  margin: 0;
+  opacity: 1;
+}
+
+.pb-menu__section {
+  background: var(--pb-edge-hard);
+  height: 2px;
+  margin: 0;
+}
+
+.pb-menu__label {
+  color: var(--pb-text-muted);
+  font-size: var(--pb-text-xs);
+  font-weight: var(--pb-weight-bold);
+  letter-spacing: 0.06em;
+  padding: var(--pb-space-3) var(--pb-space-5) var(--pb-space-1);
+  text-transform: uppercase;
+}
+
+/* Long menus scroll rather than run off the viewport. */
+.pb-menu--scroll {
+  max-height: min(70vh, calc(100dvh - 40px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Submenus open on hover, flipping left when near the right edge. */
+.pb-menu li { position: relative; }
+
+.pb-menu__sub {
+  display: none;
+  left: 100%;
+  position: absolute;
+  top: calc(var(--pb-accent-bar-w) * -1);
+}
+
+.pb-menu__sub--left { left: auto; right: 100%; }
+.pb-menu li:hover > .pb-menu__sub { display: block; }
+
+
+/* 12  MODALS ============================================================== */
+
+.pb-modal-backdrop,
+.modal-backdrop.show {
+  background-color: var(--pb-overlay-scrim);
+  opacity: 1;
+}
+
+.pb-modal,
+.modal-content.pb-modal {
+  background: var(--pb-surface-overlay);
+  border: 0;
+  border-radius: var(--pb-radius-overlay);
+  box-shadow: var(--pb-shadow-overlay);
+  display: flex;
+  flex-direction: column;
+  min-width: fit-content;
+  overflow: hidden;
+}
+
+.pb-modal__header {
+  align-items: center;
+  background-color: transparent;
+  border-bottom: var(--pb-border-w) solid var(--pb-edge-soft);
+  border-top: 3px solid transparent;
+  color: var(--pb-text-strong);
+  display: flex;
+  flex: 0 0 auto;
+  font-size: var(--pb-text-md);
+  font-weight: var(--pb-weight-bold);
+  gap: var(--pb-space-3);
+  justify-content: space-between;
+  padding: var(--pb-space-4) var(--pb-space-5);
+}
+
+.pb-modal__title {
+  align-items: center;
+  display: flex;
+  gap: var(--pb-space-3);
+}
+
+.pb-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--pb-space-7) var(--pb-space-5);
+}
+
+.pb-modal__body--flush { padding: 0; }
+
+.pb-modal__footer {
+  background-color: var(--pb-surface-overlay);
+  border-top: var(--pb-border-w) solid var(--pb-edge);
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--pb-space-3);
+  justify-content: space-between;
+  padding: var(--pb-space-4) var(--pb-space-5);
+}
+
+/* Cancel left, confirm right, always. A dialog that moves its buttons
+   around trains operators to read every dialog, which is how mistakes
+   happen at 2am. */
+.pb-modal__footer--end { justify-content: flex-end; }
+
+/* Severity headers: a coloured top edge and title, nothing louder. */
+.pb-modal__header--info  { border-top-color: var(--pb-status-info);  color: var(--pb-status-info); }
+.pb-modal__header--warn  { border-top-color: var(--pb-status-warn);  color: var(--pb-status-warn); }
+.pb-modal__header--error { border-top-color: var(--pb-status-error); color: var(--pb-status-error); }
+.pb-modal__header--ok    { border-top-color: var(--pb-status-ok);    color: var(--pb-status-ok); }
+
+/* Size presets. */
+.pb-modal--xs { width: 320px; }
+.pb-modal--sm { width: 460px; }
+.pb-modal--md { width: 600px; }
+.pb-modal--lg { width: 860px; }
+.pb-modal--fit { width: max-content; }
+
+/* A resizable dialog, for anything containing a grid. */
+.pb-modal--resize { resize: both; overflow: auto; }
+
+/* Static demo frame: lets the guide show a dialog in flow. */
+.pb-modal-demo {
+  background: var(--pb-surface-sunken);
+  display: flex;
+  justify-content: center;
+  padding: var(--pb-space-8) var(--pb-space-5);
+}
+
+
+/* 13  DRAWERS ============================================================= */
+
+/* An edge panel that slides over content rather than displacing it, so the
+   grid behind keeps its scroll position. */
+.pb-drawer {
+  background: var(--pb-surface-raised);
+  border-right: var(--pb-border-w) solid var(--pb-edge-hard);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  left: 0;
+  overflow: hidden;
+  position: absolute;
+  top: 0;
+  transition: width var(--pb-motion-drawer) var(--pb-ease);
+  width: 0;
+  z-index: var(--pb-z-drawer);
+}
+
+.pb-drawer--open { width: 265px; }
+.pb-drawer--right { border-left: var(--pb-border-w) solid var(--pb-edge-hard); border-right: 0; left: auto; right: 0; }
+.pb-drawer--wide.pb-drawer--open { width: 420px; }
+
+.pb-drawer__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--pb-space-5);
+}
+
+
+/* 14  PROGRESS & SPINNERS ================================================= */
+
+.pb-progress {
+  background-color: var(--pb-surface-sunken);
+  border: var(--pb-border-w) solid var(--pb-edge);
+  height: 18px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.pb-progress__bar {
+  align-items: center;
+  background-color: var(--pb-accent);
+  color: var(--pb-text-on-accent);
+  display: flex;
+  font-size: var(--pb-text-xs);
+  height: 100%;
+  justify-content: center;
+  transition: width var(--pb-motion-normal) var(--pb-ease);
+  white-space: nowrap;
+}
+
+/* Hazard stripes: black bands laid over the bar's own fill, so every
+   status variant stripes in its own colour — amber/black for warn,
+   red/black for error. */
+.pb-progress__bar--striped {
+  background-image: linear-gradient(
+    -45deg,
+    transparent 25%,
+    var(--pb-stripe) 25%,
+    var(--pb-stripe) 50%,
+    transparent 50%,
+    transparent 75%,
+    var(--pb-stripe) 75%
+  );
+  background-size: 28px 28px;
+}
+
+.pb-progress__bar--animated { animation: pb-stripe 0.9s linear infinite; }
+
+/* Indeterminate: we know it is working, not how far along it is. */
+.pb-progress--indeterminate .pb-progress__bar {
+  animation: pb-indeterminate 1.4s var(--pb-ease) infinite;
+  width: 35%;
+}
+
+.pb-progress__bar--ok    { background-color: var(--pb-status-ok); }
+.pb-progress__bar--warn  { background-color: var(--pb-status-warn-fill); }
+.pb-progress__bar--error { background-color: var(--pb-status-error); }
+
+@keyframes pb-stripe {
+  from { background-position: 0 0; }
+  to   { background-position: 28px 0; }
+}
+
+@keyframes pb-indeterminate {
+  0%   { margin-left: -35%; }
+  100% { margin-left: 100%; }
+}
+
+.pb-spinner {
+  animation: pb-spin 0.9s linear infinite;
+  border: 2px solid transparent;
+  border-top-color: var(--pb-accent);
+  border-right-color: var(--pb-accent);
+  border-bottom-color: var(--pb-accent);
+  border-radius: 50%;
+  display: inline-block;
+  height: var(--pb-icon-size);
+  width: var(--pb-icon-size);
+}
+
+.pb-spinner--sm { height: 14px; width: 14px; }
+.pb-spinner--lg { border-width: 3px; height: 48px; width: 48px; }
+
+@keyframes pb-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* A centred "working" block for an empty pane. */
+.pb-loading {
+  align-items: center;
+  color: var(--pb-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-5);
+  justify-content: center;
+  padding: var(--pb-space-10);
+}
+
+
+/* 15  TABLES & DATA GRID ================================================== */
+
+.pb-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--pb-text);
+  font-size: var(--pb-text-sm);
+  width: 100%;
+}
+
+/* Headers are small tracked caps; rows are separated by hairlines only —
+   no column rules — so the eye follows the row, not the cell grid. */
+.pb-table thead th {
+  background: var(--pb-surface-raised);
+  border-bottom: var(--pb-border-w) solid var(--pb-edge);
+  color: var(--pb-text-muted);
+  font-size: var(--pb-text-xs);
+  font-weight: var(--pb-weight-bold);
+  letter-spacing: var(--pb-tracking-label);
+  padding: var(--pb-space-3) var(--pb-space-5);
+  position: sticky;
+  text-align: left;
+  text-transform: uppercase;
+  top: 0;
+  white-space: nowrap;
+  z-index: var(--pb-z-sticky);
+}
+
+.pb-table tbody td {
+  border-bottom: var(--pb-border-w) solid var(--pb-edge-soft);
+  height: var(--pb-grid-row-h);
+  padding: var(--pb-space-1) var(--pb-space-5);
+  vertical-align: middle;
+}
+
+.pb-table tbody tr { background: var(--pb-surface-raised); }
+
+.pb-table tbody tr:nth-child(even) { background: var(--pb-surface-raised); }
+
+.pb-table tbody tr:hover { background: var(--pb-surface-overlay); }
+
+.pb-table tbody tr[aria-selected="true"],
+.pb-table tbody tr.pb-selected {
+  background: var(--pb-accent-wash);
+  box-shadow: inset 2px 0 0 0 var(--pb-accent);
+}
+
+.pb-table--numeric td,
+.pb-table .pb-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pb-table--compact tbody td { height: 22px; padding: 0 var(--pb-space-3); }
+
+.pb-table caption {
+  caption-side: top;
+  color: var(--pb-text-muted);
+  padding: var(--pb-space-2) 0;
+  text-align: left;
+}
+
+/* The scrolling wrapper. Grid headers stay put; the body scrolls. */
+.pb-grid {
+  border: var(--pb-border-w) solid var(--pb-edge-hard);
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pb-grid-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Sortable header affordance. */
+.pb-table th[aria-sort] { cursor: pointer; padding-right: var(--pb-space-7); position: relative; }
+
+.pb-table th[aria-sort]:hover { background: var(--pb-surface-hover); }
+
+.pb-table th[aria-sort="ascending"]::after,
+.pb-table th[aria-sort="descending"]::after {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  content: "";
+  position: absolute;
+  right: var(--pb-space-4);
+  top: 50%;
+}
+
+.pb-table th[aria-sort="ascending"]::after {
+  border-bottom: 5px solid var(--pb-accent);
+  transform: translateY(-60%);
+}
+
+.pb-table th[aria-sort="descending"]::after {
+  border-top: 5px solid var(--pb-accent);
+  transform: translateY(-40%);
+}
+
+/* An editable cell: show the drop-down affordance only where one exists. */
+.pb-cell-select {
+  cursor: pointer;
+  position: relative;
+  padding-right: var(--pb-space-7);
+}
+
+.pb-cell-select::after {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--pb-text-muted);
+  content: "";
+  position: absolute;
+  right: var(--pb-space-3);
+  top: 50%;
+  transform: translateY(-40%);
+}
+
+
+/* 16  STATUS ============================================================== */
+
+/* A 10px dot. Always next to a word — the dot speeds up a return visit, the
+   word is what makes it legible to someone colour-blind or new. */
+.pb-dot {
+  border-radius: 0;
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 10px;
+  width: 10px;
+}
+
+.pb-dot--ok    { background: var(--pb-status-ok); }
+.pb-dot--warn  { background: var(--pb-status-warn-fill); }
+.pb-dot--error { background: var(--pb-status-error); }
+.pb-dot--info  { background: var(--pb-status-info); }
+.pb-dot--idle  { background: var(--pb-status-idle); }
+
+/* A pulsing dot, for an active alarm that has not been acknowledged. */
+.pb-dot--pulse { animation: pb-pulse 1.6s var(--pb-ease) infinite; }
+
+@keyframes pb-pulse {
+  50% { opacity: 0.35; }
+}
+
+.pb-status {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--pb-space-3);
+  white-space: nowrap;
+}
+
+/* A badge: an outlined block with a leading square and coloured text, so it
+   still reads as a state in greyscale. */
+.pb-badge {
+  --pb-badge-c: var(--pb-status-idle);
+  align-items: center;
+  background: color-mix(in srgb, var(--pb-badge-c) 12%, transparent);
+  border: var(--pb-border-w) solid color-mix(in srgb, var(--pb-badge-c) 45%, transparent);
+  border-radius: var(--pb-radius-chip);
+  color: var(--pb-badge-c);
+  display: inline-flex;
+  font-size: var(--pb-text-xs);
+  font-weight: var(--pb-weight-medium);
+  gap: var(--pb-space-3);
+  line-height: 1;
+  padding: var(--pb-space-2) var(--pb-space-4);
+  white-space: nowrap;
+}
+
+.pb-badge::before {
+  background: currentColor;
+  border-radius: 0;
+  content: "";
+  height: 6px;
+  width: 6px;
+}
+
+.pb-badge--ok {
+  --pb-badge-c: var(--pb-status-ok);
+}
+
+.pb-badge--warn {
+  --pb-badge-c: var(--pb-status-warn);
+}
+
+.pb-badge--error {
+  --pb-badge-c: var(--pb-status-error);
+}
+
+.pb-badge--info {
+  --pb-badge-c: var(--pb-status-info);
+}
+
+/* An inline alert / banner. */
+.pb-alert {
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--pb-status-info) 14%, var(--pb-surface-raised));
+  border-left: var(--pb-accent-bar-w) solid var(--pb-status-info);
+  color: var(--pb-text);
+  display: flex;
+  gap: var(--pb-space-4);
+  padding: var(--pb-space-4) var(--pb-space-5);
+}
+
+.pb-alert--ok {
+  background: color-mix(in srgb, var(--pb-status-ok) 14%, var(--pb-surface-raised));
+  border-left-color: var(--pb-status-ok);
+}
+
+.pb-alert--warn {
+  background: color-mix(in srgb, var(--pb-status-warn) 14%, var(--pb-surface-raised));
+  border-left-color: var(--pb-status-warn);
+}
+
+.pb-alert--error {
+  background: color-mix(in srgb, var(--pb-status-error) 14%, var(--pb-surface-raised));
+  border-left-color: var(--pb-status-error);
+}
+
+.pb-alert__title {
+  color: var(--pb-text-strong);
+  font-weight: var(--pb-weight-bold);
+}
+
+
+/* 17  ROUTING ROLES & SIGNAL IDENTITY ===================================== */
+
+/* Matrix crosspoint buttons. These inherit .pb-btn and only restate colour,
+   so a wall of 2000 of them still shares the one hover and focus model. */
+.pb-xpt--source { background-color: var(--pb-source); }
+.pb-xpt--source:hover { background-color: var(--pb-source-hover); }
+.pb-xpt--dest { background-color: var(--pb-dest); }
+.pb-xpt--dest:hover { background-color: var(--pb-dest-hover); }
+.pb-xpt--tieline { background-color: var(--pb-tieline); }
+.pb-xpt--tieline:hover { background-color: var(--pb-tieline-hover); }
+
+/* Locked / protected crosspoints read as the same colour at lower opacity,
+   so the role survives and the state is obvious. */
+.pb-xpt--locked { opacity: 0.5; cursor: not-allowed; }
+.pb-xpt--protected { opacity: 0.8; }
+.pb-xpt--protected::after {
+  content: "";
+  border: 1px dashed var(--pb-text);
+  inset: 2px;
+  position: absolute;
+}
+
+.pb-xpt { position: relative; }
+
+/* A level swatch / meter cap. */
+.pb-level {
+  border-radius: 0;
+  display: inline-block;
+  height: 12px;
+  width: 12px;
+}
+
+.pb-level--video { background: var(--pb-signal-video); }
+.pb-level--01 { background: var(--pb-signal-01); }
+.pb-level--02 { background: var(--pb-signal-02); }
+.pb-level--03 { background: var(--pb-signal-03); }
+.pb-level--04 { background: var(--pb-signal-04); }
+.pb-level--05 { background: var(--pb-signal-05); }
+.pb-level--06 { background: var(--pb-signal-06); }
+.pb-level--07 { background: var(--pb-signal-07); }
+.pb-level--08 { background: var(--pb-signal-08); }
+.pb-level--09 { background: var(--pb-signal-09); }
+.pb-level--10 { background: var(--pb-signal-10); }
+.pb-level--11 { background: var(--pb-signal-11); }
+.pb-level--12 { background: var(--pb-signal-12); }
+.pb-level--13 { background: var(--pb-signal-13); }
+.pb-level--14 { background: var(--pb-signal-14); }
+.pb-level--15 { background: var(--pb-signal-15); }
+.pb-level--16 { background: var(--pb-signal-16); }
+
+
+/* 18  SUMMARY BAR ========================================================= */
+
+/* A read-out strip pinned to the bottom of a grid pane. Transparent to
+   pointer events so it never eats a click meant for a control beneath it;
+   opt any genuinely interactive child back in. */
+.pb-summary {
+  align-items: center;
+  background: var(--pb-surface-base);
+  border-top: var(--pb-border-w) solid var(--pb-edge-hard);
+  color: var(--pb-text-strong);
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--pb-space-6);
+  justify-content: center;
+  line-height: 1;
+  min-height: var(--pb-toolbar-h);
+  padding: 0 var(--pb-space-6);
+  pointer-events: none;
+}
+
+.pb-summary__item {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--pb-space-2);
+  white-space: nowrap;
+}
+
+.pb-summary__item > .pb-summary__key {
+  font-weight: var(--pb-weight-bold);
+}
+
+.pb-summary__item > .pb-summary__val {
+  color: var(--pb-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pb-summary [data-interactive] { pointer-events: auto; }
+
+
+/* 19  WINDOW STATE BORDERS ================================================ */
+
+/* A whole-window border is the loudest signal the system has. Two uses only:
+   unsaved changes exist, and the database is write-protected. Because it
+   frames everything, it is still visible when the operator is heads-down in
+   a submenu three panes deep. */
+.pb-state-commit {
+  border: var(--pb-state-border-w) solid var(--pb-commit);
+  position: relative;
+  z-index: 0;
+}
+
+.pb-state-protect {
+  border: var(--pb-state-border-w) solid var(--pb-protect);
+  position: relative;
+  z-index: 0;
+}
+
+/* Pages read this to keep fixed children clear of the frame. */
+.pb-state-commit, .pb-state-protect { --pb-state-inset: var(--pb-state-border-w); }
+
+
+/* 20  UTILITIES =========================================================== */
+
+.pb-row    { align-items: center; display: flex; gap: var(--pb-space-3); }
+.pb-row--tight { gap: var(--pb-space-1); }
+.pb-row--wrap  { flex-wrap: wrap; }
+.pb-col    { display: flex; flex-direction: column; gap: var(--pb-space-3); }
+.pb-grow   { flex: 1 1 auto; min-width: 0; }
+.pb-push   { margin-left: auto; }
+
+.pb-text-strong   { color: var(--pb-text-strong); font-weight: var(--pb-weight-bold); }
+.pb-text-muted    { color: var(--pb-text-muted); }
+.pb-text-disabled { color: var(--pb-text-disabled); }
+.pb-text-num      { font-variant-numeric: tabular-nums; }
+.pb-text-mono     { font-family: var(--pb-font-mono); }
+.pb-truncate      { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Visually hidden but available to screen readers — the correct way to give
+   an icon-only button a name. */
+.pb-sr-only {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+
+/* ICONS ===================================================================
+   Icons are inline SVG referencing a sprite, sized by CSS and coloured by
+   currentColor — so an icon inside a selected button turns white with the
+   text, for free, with no second "-disabled" asset.
+   ========================================================================= */
+
+.pb-icon {
+  display: inline-block;
+  fill: none;
+  flex: 0 0 auto;
+  height: var(--pb-icon-size);
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  vertical-align: middle;
+  width: var(--pb-icon-size);
+}
+
+.pb-icon--sm { height: var(--pb-icon-size-sm); width: var(--pb-icon-size-sm); }
+.pb-icon--lg { height: 24px; width: 24px; }
+.pb-icon--filled { fill: currentColor; stroke: none; }
+
+:disabled > .pb-icon,
+.disabled > .pb-icon { opacity: 0.55; }
+
+.pb-icon--ok    { color: var(--pb-status-ok); }
+.pb-icon--warn  { color: var(--pb-status-warn); }
+.pb-icon--error { color: var(--pb-status-error); }
+.pb-icon--info  { color: var(--pb-status-info); }
+
+
+/* THEME CROSSFADE =========================================================
+   Add .pb-theme-transition to <html> for --pb-motion-theme around a theme
+   switch, then remove it. It is not left on permanently because it would
+   override every component's own transition. */
+
+.pb-theme-transition,
+.pb-theme-transition *,
+.pb-theme-transition *::before,
+.pb-theme-transition *::after {
+  transition: background-color var(--pb-motion-theme) var(--pb-ease),
+              border-color var(--pb-motion-theme) var(--pb-ease),
+              color var(--pb-motion-theme) var(--pb-ease),
+              box-shadow var(--pb-motion-theme) var(--pb-ease) !important;
+}
+
+/* REDUCED MOTION ==========================================================
+   Transition durations are zeroed in the tokens; looping decoration stops
+   here. Spinners and the indeterminate bar keep moving — they are the
+   only signal that work is happening. A pulsing alarm dot goes steady and
+   relies on the text beside it, which it must always have. */
+
+@media (prefers-reduced-motion: reduce) {
+  .pb-dot--pulse,
+  .pb-progress__bar--animated { animation: none; }
+}
