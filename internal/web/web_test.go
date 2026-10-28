@@ -101,6 +101,7 @@ func TestAPIStateDownIsEmptyArrays(t *testing.T) {
 func put(t *testing.T, url, body string) (*http.Response, map[string]any) {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodPut, url, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	r, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -127,11 +128,17 @@ func TestAPIConfig(t *testing.T) {
 	}
 
 	before := f.cfg
-	for _, body := range []string{`{"resyncSeconds":1}`, `{"hub":"h:99999"}`, `{"protectDevice":5000}`, `not json`, `{"bogus":1}`} {
+	for _, body := range []string{`{"resyncSeconds":1}`, `{"hub":"h:99999"}`, `{"protectDevice":5000}`, `not json`, `{"bogus":1}`, `{"debug":true} {"debug":false}`} {
 		resp, m := put(t, f.srv.URL+"/api/config", body)
 		if resp.StatusCode != 400 || m["error"] == "" || f.cfg != before {
 			t.Errorf("%s: %d %v", body, resp.StatusCode, m)
 		}
+	}
+
+	req, _ := http.NewRequest(http.MethodPut, f.srv.URL+"/api/config", strings.NewReader(`{"debug":true}`))
+	req.Header.Set("Content-Type", "text/plain")
+	if r, err := http.DefaultClient.Do(req); err != nil || r.StatusCode != 415 || f.cfg != before {
+		t.Errorf("text/plain PUT: %v %v", r, err)
 	}
 
 	f.set = errors.New("disk full")
@@ -140,7 +147,7 @@ func TestAPIConfig(t *testing.T) {
 		t.Errorf("%d %v", resp.StatusCode, m)
 	}
 
-	req, _ := http.NewRequest(http.MethodDelete, f.srv.URL+"/api/config", nil)
+	req, _ = http.NewRequest(http.MethodDelete, f.srv.URL+"/api/config", nil)
 	r, _ = http.DefaultClient.Do(req)
 	r.Body.Close()
 	if r.StatusCode != 405 {

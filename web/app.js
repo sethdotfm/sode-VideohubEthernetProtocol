@@ -132,7 +132,7 @@ function note(text) { $('settings-note').textContent = text; }
 function showError(text) { $('settings-err').textContent = text; $('settings-err').hidden = !text; }
 
 function touched() {
-  if (!dirty()) return;
+  if (!dirty()) { note(''); return; }
   note('Unsaved changes');
   showError('');
 }

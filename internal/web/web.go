@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"mime"
 	"net/http"
 	"time"
 
@@ -33,9 +34,10 @@ type Deps struct {
 }
 
 var (
-	debounce   = 100 * time.Millisecond
-	heartbeat  = 15 * time.Second
-	refreshAll = 5 * time.Second // re-send state if client count, resync time etc. changed
+	debounce     = 100 * time.Millisecond
+	heartbeat    = 15 * time.Second
+	writeTimeout = 10 * time.Second
+	refreshAll   = 5 * time.Second // re-send state if client count, resync time etc. changed
 )
 
 type stateJSON struct {
@@ -117,11 +119,19 @@ func (h *handler) config(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, h.Config())
 	case http.MethodPut:
+		if ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); ct != "application/json" {
+			writeJSON(w, http.StatusUnsupportedMediaType, map[string]string{"error": "Content-Type must be application/json"})
+			return
+		}
 		c := h.Config() // fields the page doesn't send keep their value
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&c); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad JSON: " + err.Error()})
+			return
+		}
+		if dec.More() {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad JSON: trailing data"})
 			return
 		}
 		c.Normalize()
@@ -143,6 +153,7 @@ func (h *handler) config(w http.ResponseWriter, r *http.Request) {
 // events streams the state: once on connect, then again (debounced) after
 // every store event and whenever client count or resync time change.
 func (h *handler) events(w http.ResponseWriter, r *http.Request) {
+	rc := http.NewResponseController(w)
 	fl, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -165,6 +176,7 @@ func (h *handler) events(w http.ResponseWriter, r *http.Request) {
 			return true
 		}
 		last = cmp
+		rc.SetWriteDeadline(time.Now().Add(writeTimeout))
 		if _, err := fmt.Fprintf(w, "event: state\ndata: %s\n\n", b); err != nil {
 			return false
 		}
@@ -201,6 +213,7 @@ func (h *handler) events(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-hb.C:
+			rc.SetWriteDeadline(time.Now().Add(writeTimeout))
 			if _, err := fmt.Fprint(w, ": hb\n\n"); err != nil {
 				return
 			}
