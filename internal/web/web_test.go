@@ -49,7 +49,7 @@ func newFixture(t *testing.T) *fixture {
 
 func TestHealthzAndStatic(t *testing.T) {
 	f := newFixture(t)
-	for path, want := range map[string]string{"/healthz": "ok", "/": "Sode · Videohub", "/app.js": "EventSource", "/app.css": "--vep-scale"} {
+	for path, want := range map[string]string{"/healthz": "ok", "/": "Sode VEP Bridge", "/app.js": "EventSource", "/app.css": "--vep-scale"} {
 		r, err := http.Get(f.srv.URL + path)
 		if err != nil {
 			t.Fatal(err)
