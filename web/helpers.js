@@ -8,6 +8,19 @@ export function lockLabel(l) {
   return 'Unlocked';
 }
 
+// SW-P-08 names are at most 16 characters (Probel); Sode asks for that length.
+export const NAME_MAX = 16;
+
+// A name in two parts: what survives the 16-character limit and what is cut.
+// Counts characters, not UTF-16 units, so an emoji is one.
+export function splitName(name, max = NAME_MAX) {
+  const chars = Array.from(name ?? '');
+  return { head: chars.slice(0, max).join(''), tail: chars.slice(max).join('') };
+}
+
+// How many of these names run past the limit.
+export const countLong = (names, max = NAME_MAX) => names.filter((n) => Array.from(n ?? '').length > max).length;
+
 // One row per output from a /api/state snapshot. Numbers count from 1.
 export function buildRows(st) {
   const rows = [];
@@ -55,5 +68,5 @@ export function readConfig(f) {
   const protectDevice = int(f.protect), resyncSeconds = int(f.resync);
   if (!(protectDevice >= 0 && protectDevice <= 1023)) return { error: 'Protect device number must be a whole number from 0 to 1023.' };
   if (!(resyncSeconds >= 5 && resyncSeconds <= 3600)) return { error: 'Resync seconds must be a whole number from 5 to 3600.' };
-  return { cfg: { hub: f.hub.trim(), protectDevice, resyncSeconds, debug: !!f.debug } };
+  return { cfg: { hub: f.hub.trim(), protectDevice, resyncSeconds } };
 }

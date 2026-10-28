@@ -22,8 +22,11 @@ type Config struct {
 	// Videohub has locked.
 	ProtectDevice int `yaml:"protectDevice" json:"protectDevice"`
 	// ResyncSeconds is how often names, routes and locks are re-polled.
-	ResyncSeconds int  `yaml:"resyncSeconds" json:"resyncSeconds"`
-	Debug         bool `yaml:"debug" json:"debug"`
+	ResyncSeconds int `yaml:"resyncSeconds" json:"resyncSeconds"`
+	// Debug is no longer a setting: it comes from VEP_DEBUG at start-up (set
+	// in compose). The field stays so config files written by earlier
+	// versions still load (KnownFields), and is never saved or sent to the page.
+	Debug bool `yaml:"debug,omitempty" json:"-"`
 }
 
 func Defaults() Config {
@@ -74,6 +77,13 @@ func envInt(k string, def int) (int, error) {
 	return n, nil
 }
 
+// DebugFromEnv reports whether VEP_DEBUG asks for the Videohub wire traffic
+// to be logged.
+func DebugFromEnv() bool {
+	v := os.Getenv("VEP_DEBUG")
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
 // FromEnv overlays VEP_* variables on base.
 func FromEnv(base Config) (Config, error) {
 	var err error
@@ -85,9 +95,6 @@ func FromEnv(base Config) (Config, error) {
 	}
 	if base.ResyncSeconds, err = envInt("VEP_RESYNC_SECONDS", base.ResyncSeconds); err != nil {
 		return base, err
-	}
-	if v := os.Getenv("VEP_DEBUG"); v != "" {
-		base.Debug = v == "1" || strings.EqualFold(v, "true")
 	}
 	return base, nil
 }

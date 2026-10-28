@@ -1,7 +1,7 @@
-// The Sode · Videohub page: status, settings and a live table of outputs.
+// The Sode VEP Bridge page: status, a live table of crosspoints, and settings.
 // Builds DOM with el(), never innerHTML: labels come from the hub.
 
-import { buildRows, filterRows, duration, isZeroTime, readConfig } from './helpers.js';
+import { buildRows, filterRows, duration, isZeroTime, readConfig, splitName, countLong, NAME_MAX } from './helpers.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -70,7 +70,20 @@ function render() {
   $('st-swp-note').textContent = '';
   $('st-resync').textContent = isZeroTime(st.lastResync) ? 'Not yet' : `${new Date(st.lastResync).toLocaleTimeString()} (${duration((Date.now() - new Date(st.lastResync)) / 1000)} ago)`;
   $('st-uptime').textContent = isZeroTime(st.started) ? '–' : duration((Date.now() - new Date(st.started)) / 1000);
-  $('st-version').textContent = st.version ? `Sode · Videohub ${st.version}` : '';
+  $('st-version').textContent = st.version ? `Sode VEP Bridge ${st.version}` : '';
+}
+
+// A name with anything past the SW-P-08 limit in red. The note above the
+// table says what red means, so colour is never the only signal.
+function nameCell(name) {
+  const { head, tail } = splitName(name);
+  const e = el('span', null, head);
+  if (tail) {
+    const over = el('span', 'vep__over', tail);
+    over.title = `Characters past ${NAME_MAX} are cut off in SW-P-08`;
+    e.append(over);
+  }
+  return e;
 }
 
 function renderRows() {
@@ -78,14 +91,17 @@ function renderRows() {
   const body = $('rows');
   body.replaceChildren(...shown.map((r) => el('tr', null,
     el('td', 'vep__num', String(r.out)),
-    el('td', 'vep__name', r.name),
-    el('td', 'vep__name', r.inNum == null ? el('span', 'vep__dim', 'Nothing routed') : el('span', null, el('span', 'vep__num', String(r.inNum)), ` ${r.inName}`)),
+    el('td', 'vep__name', nameCell(r.name)),
+    el('td', 'vep__name', r.inNum == null ? el('span', 'vep__dim', 'Nothing routed') : el('span', null, el('span', 'vep__num', String(r.inNum)), ' ', nameCell(r.inName))),
     el('td', null, lockCell(r.lock)),
   )));
+  const long = countLong(st?.outputs ?? []) + countLong(st?.inputs ?? []);
+  $('long-note').hidden = !long;
+  $('long-note').textContent = long ? `${long} name${long === 1 ? ' is' : 's are'} longer than ${NAME_MAX} characters: the part past ${NAME_MAX} is shown in red and is cut off in SW-P-08.` : '';
   $('count').textContent = rows.length ? `${shown.length} of ${rows.length}` : '';
   const empty = $('empty');
   empty.hidden = shown.length > 0;
-  empty.textContent = rows.length ? 'No outputs match.' : (st && st.up ? 'The Videohub has no outputs.' : 'Videohub is down: no outputs to show.');
+  empty.textContent = rows.length ? 'No crosspoints match.' : (st && st.up ? 'The Videohub has no crosspoints.' : 'Videohub is down: no crosspoints to show.');
 }
 
 // Locked states get a badge, but the words carry the meaning.
@@ -116,7 +132,7 @@ connect();
 // ---- settings
 
 const form = $('settings');
-const formValues = () => ({ hub: $('cfg-hub').value, protect: $('cfg-protect').value, resync: $('cfg-resync').value, debug: $('cfg-debug').checked });
+const formValues = () => ({ hub: $('cfg-hub').value, protect: $('cfg-protect').value, resync: $('cfg-resync').value });
 let clean = null; // formValues() as last loaded or saved
 const dirty = () => clean !== null && JSON.stringify(formValues()) !== JSON.stringify(clean);
 
@@ -124,7 +140,6 @@ function fill(c) {
   $('cfg-hub').value = c.hub;
   $('cfg-protect').value = c.protectDevice;
   $('cfg-resync').value = c.resyncSeconds;
-  $('cfg-debug').checked = !!c.debug;
   clean = formValues();
 }
 
@@ -136,7 +151,7 @@ function touched() {
   note('Unsaved changes');
   showError('');
 }
-for (const id of ['cfg-hub', 'cfg-protect', 'cfg-resync', 'cfg-debug']) {
+for (const id of ['cfg-hub', 'cfg-protect', 'cfg-resync']) {
   $(id).addEventListener('input', touched);
   $(id).addEventListener('change', touched);
 }

@@ -1,4 +1,4 @@
-/* The Sode · Videohub page. Tokens only; components come from patchbay.
+/* The Sode VEP Bridge page. Tokens only; components come from patchbay.
    Layout and look follow Sode's base.css / desktop.css (same names, vep__ for sode__). */
 
 :root {
@@ -26,7 +26,8 @@ code {
 }
 .vep__mark {
   color: var(--pb-text-strong);
-  font-size: calc(var(--pb-text-xl) * 2.5);
+  font-size: calc(var(--pb-text-xl) * 1.6);
+  text-align: center;
   font-weight: var(--pb-weight-bold);
   letter-spacing: var(--pb-tracking-label);
   margin: 0;
@@ -75,7 +76,11 @@ code {
   padding: var(--pb-space-5) 0 0;
   width: 100%;
 }
-.vep__settings { align-self: center; max-width: 640px; width: 100%; }
+/* Settings run as one row across the column; they wrap on a narrow window. */
+.vep__settings .vep__fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 900px) {
+  .vep__settings .vep__fields { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+}
 
 .vep__fields {
   display: grid;
@@ -135,3 +140,20 @@ code {
 .vep__num { font-family: var(--pb-font-mono); }
 .vep__dim { color: var(--pb-text-muted); }
 .vep__name { max-width: 20rem; overflow: hidden; text-overflow: ellipsis; }
+
+/* Anything past the 16 characters SW-P-08 carries. */
+.vep__over { color: var(--pb-status-error); }
+
+/* Project links at the foot of the page: bold blue, never underlined. */
+.vep__links {
+  display: flex;
+  gap: var(--pb-space-6);
+  justify-content: center;
+}
+.vep__links a {
+  color: var(--pb-status-info);
+  font-weight: var(--pb-weight-bold);
+  text-decoration: none;
+}
+.vep__links a:hover,
+.vep__links a:focus-visible { color: color-mix(in srgb, var(--pb-status-info) 75%, var(--pb-text-strong)); text-decoration: none; }

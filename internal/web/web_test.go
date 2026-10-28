@@ -122,27 +122,27 @@ func TestAPIConfig(t *testing.T) {
 		t.Errorf("%+v", c)
 	}
 
-	resp, m := put(t, f.srv.URL+"/api/config", `{"hub":" 10.1.1.1 ","protectDevice":7,"resyncSeconds":30,"debug":true}`)
-	if resp.StatusCode != 200 || f.cfg.Hub != "10.1.1.1" || f.cfg.ProtectDevice != 7 || !f.cfg.Debug || m["resyncSeconds"] != float64(30) {
+	resp, m := put(t, f.srv.URL+"/api/config", `{"hub":" 10.1.1.1 ","protectDevice":7,"resyncSeconds":30}`)
+	if resp.StatusCode != 200 || f.cfg.Hub != "10.1.1.1" || f.cfg.ProtectDevice != 7 || m["resyncSeconds"] != float64(30) {
 		t.Fatalf("%d %+v %v", resp.StatusCode, f.cfg, m)
 	}
 
 	before := f.cfg
-	for _, body := range []string{`{"resyncSeconds":1}`, `{"hub":"h:99999"}`, `{"protectDevice":5000}`, `not json`, `{"bogus":1}`, `{"debug":true} {"debug":false}`} {
+	for _, body := range []string{`{"resyncSeconds":1}`, `{"hub":"h:99999"}`, `{"protectDevice":5000}`, `not json`, `{"bogus":1}`, `{"protectDevice":1} {"protectDevice":2}`, `{"debug":true}`} {
 		resp, m := put(t, f.srv.URL+"/api/config", body)
 		if resp.StatusCode != 400 || m["error"] == "" || f.cfg != before {
 			t.Errorf("%s: %d %v", body, resp.StatusCode, m)
 		}
 	}
 
-	req, _ := http.NewRequest(http.MethodPut, f.srv.URL+"/api/config", strings.NewReader(`{"debug":true}`))
+	req, _ := http.NewRequest(http.MethodPut, f.srv.URL+"/api/config", strings.NewReader(`{"protectDevice":2}`))
 	req.Header.Set("Content-Type", "text/plain")
 	if r, err := http.DefaultClient.Do(req); err != nil || r.StatusCode != 415 || f.cfg != before {
 		t.Errorf("text/plain PUT: %v %v", r, err)
 	}
 
 	f.set = errors.New("disk full")
-	resp, m = put(t, f.srv.URL+"/api/config", `{"debug":false}`)
+	resp, m = put(t, f.srv.URL+"/api/config", `{"protectDevice":3}`)
 	if resp.StatusCode != 500 || m["error"] != "disk full" {
 		t.Errorf("%d %v", resp.StatusCode, m)
 	}

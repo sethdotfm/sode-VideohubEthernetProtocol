@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lockLabel, buildRows, filterRows, duration, isZeroTime, readConfig } from '../helpers.js';
+import { lockLabel, buildRows, filterRows, duration, isZeroTime, readConfig, splitName, countLong } from '../helpers.js';
 
 const st = {
   inputs: ['Camera 1', 'Camera 2'],
@@ -50,9 +50,21 @@ test('isZeroTime', () => {
 });
 
 test('readConfig', () => {
-  const ok = readConfig({ hub: ' 10.0.0.5 ', protect: '1', resync: '60', debug: true });
-  assert.deepEqual(ok.cfg, { hub: '10.0.0.5', protectDevice: 1, resyncSeconds: 60, debug: true });
+  const ok = readConfig({ hub: ' 10.0.0.5 ', protect: '1', resync: '60' });
+  assert.deepEqual(ok.cfg, { hub: '10.0.0.5', protectDevice: 1, resyncSeconds: 60 });
   assert.match(readConfig({ hub: '', protect: '1', resync: '4' }).error, /Resync/);
   assert.match(readConfig({ hub: '', protect: 'x', resync: '60' }).error, /Protect/);
   assert.match(readConfig({ hub: '', protect: '1024', resync: '60' }).error, /Protect/);
+});
+
+test('splitName cuts at 16 characters and counts characters not UTF-16 units', () => {
+  assert.deepEqual(splitName('SWR ME1 PGM'), { head: 'SWR ME1 PGM', tail: '' });
+  assert.deepEqual(splitName('ABCDEFGHIJKLMNOPQR'), { head: 'ABCDEFGHIJKLMNOP', tail: 'QR' });
+  assert.deepEqual(splitName('1234567890123456'), { head: '1234567890123456', tail: '' });
+  assert.equal(splitName('😀'.repeat(17)).tail, '😀');
+  assert.deepEqual(splitName(null), { head: '', tail: '' });
+});
+
+test('countLong counts names past 16 characters', () => {
+  assert.equal(countLong(['short', 'x'.repeat(17), 'y'.repeat(16), 'z'.repeat(40)]), 2);
 });

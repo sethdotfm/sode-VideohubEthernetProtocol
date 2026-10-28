@@ -24,7 +24,8 @@ Without `VEP_CONFIG`, config comes from `VEP_*` env and is not persisted. The we
 - Go, stdlib-first. Only dep: yaml.v3. Distroless static image; HTTP :8081 (TLS is the user's proxy), SW-P-08 :8910. Keep it light: no frameworks, no new deps without asking.
 - Sode is the controller; **we are the router**. Single matrix (any matrix number is accepted and echoed), **extended** commands (16-bit src/dst), one level: **wire level 0 = video**. Other levels answer "nothing routed" (0xFFFF) and ignore connects. Sode must be set to `SODE_LEVEL_COUNT=1`, `SODE_LEVEL_WIRE_OFFSET=-1`.
 - Videohub indices are 0-based and map straight to SW-P-08 dst/src numbers.
-- Config: `/data/config.yaml` edited on the GUI; `VEP_*` env only seeds the file on first start. No PIN (LAN tool).
+- Config: `/data/config.yaml` edited on the GUI; `VEP_*` env only seeds the file on first start. No PIN (LAN tool). `VEP_DEBUG` (Videohub wire log) is env-only, read at start-up; `Config.Debug` is a dropped setting kept so older files load.
+- SW-P-08 names are 16 characters at most; the page shows anything past 16 in red (with a text note), and the README tells users to set `SODE_NAME_LEN=16`.
 - Frontend: vanilla JS ES modules, no build step. Follow patchbay rules exactly (https://github.com/sethdotfm/patchbay llms.txt): `pb-` classes only, tokens only, no Bootstrap utilities, no border-radius, status always with text. Patchbay is vendored under `web/vendor/patchbay`; copy missing icons from upstream, don't fake them. It must look and feel like Sode.
 - **Build DOM with `el()`, never `innerHTML`**: labels come from the hub.
 - `internal/swp08` is copied from Sode (its `internal/` can't be imported). Fix bugs here, then tell the user so Sode can take them.

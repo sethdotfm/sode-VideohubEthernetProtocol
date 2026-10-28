@@ -1,6 +1,6 @@
 # sode-vep
 
-A small bridge that makes one **Blackmagic Videohub** look like an **SW-P-08 router** to [Sode](https://github.com/sethdotfm/sode). It polls the hub's names, routes and locks, reports them to Sode, and passes Sode's takes on to the hub. A one-page GUI on port 8081 shows status and the live route table.
+A small bridge that makes one **Blackmagic Videohub** look like an **SW-P-08 router** to [Sode](https://github.com/sethdotfm/sode). It polls the hub's names, routes and locks, reports them to Sode, and passes Sode's takes on to the hub. A one-page GUI on port 8081 shows status, the live crosspoints and the settings.
 
 **Version:** 0.1.0 (MVP, not yet verified on a real Videohub)
 
@@ -23,7 +23,7 @@ In Sode, use the bridge as the router and give it **one level**:
 | `SODE_ROUTER` | `<bridge host>:8910` |
 | `SODE_LEVEL_COUNT` | `1` |
 | `SODE_LEVEL_WIRE_OFFSET` | `-1` (UI level 1 → wire level 0) |
-| `SODE_NAME_LEN` | `12` (longer names are cut) |
+| `SODE_NAME_LEN` | `16` (the most SW-P-08 carries; longer names are cut, and shown in red on the bridge page) |
 
 Matrix number doesn't matter (any is accepted).
 
@@ -34,7 +34,7 @@ Matrix number doesn't matter (any is accepted).
 | Videohub address `VEP_HUB` | none | host or host:port (port defaults to 9990) |
 | Protect device `VEP_PROTECT_DEVICE` | 1 | SW-P-08 device number reported for locked outputs |
 | Resync seconds `VEP_RESYNC_SECONDS` | 60 | how often names, routes and locks are re-polled |
-| `VEP_DEBUG` | false | log the Videohub wire traffic |
+| `VEP_DEBUG` | false | log every line sent to and read from the Videohub (compose / env only, not on the GUI) |
 | `VEP_CONFIG` | `/data/config.yaml` in the image | settings file |
 | `VEP_LISTEN_HTTP` / `VEP_LISTEN_SWP08` | `:8081` / `:8910` | listen addresses |
 
@@ -46,7 +46,7 @@ Compose host ports: `VEP_GUI_PORT`, `VEP_SWP08_PORT`, `SODE_PORT`, `VHSIM_PORT`.
 - Takes from Sode are sent to the hub. The route change comes back from the hub and is announced to Sode as Connected. A take that changes nothing, or that the hub refuses, gets no reply (as a real router does), so Sode reports it by its own timeout.
 - Outputs locked on the hub (`L`, or `O` by this bridge) are reported as **protected**. Takes to them are not forwarded. Sode cannot change locks.
 - If the hub is unreachable, the bridge drops Sode's connection and refuses new ones until the hub is back, so Sode shows the router as down rather than showing stale names.
-- Labels are cut to the length Sode asks for and non-ASCII characters are folded.
+- Labels are cut to the length Sode asks for (16 at most) and non-ASCII characters are folded.
 
 ## Development
 

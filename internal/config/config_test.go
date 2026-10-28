@@ -1,7 +1,9 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -55,5 +57,34 @@ func TestFromEnv(t *testing.T) {
 	t.Setenv("VEP_RESYNC_SECONDS", "x")
 	if _, err := FromEnv(Defaults()); err == nil {
 		t.Error("bad int accepted")
+	}
+}
+
+func TestOldFileWithDebugStillLoadsAndIsNotSaved(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(p, []byte("hub: 10.0.0.9\nprotectDevice: 1\nresyncSeconds: 60\ndebug: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, exists, err := Load(p)
+	if err != nil || !exists || c.Hub != "10.0.0.9" {
+		t.Fatalf("%+v %v %v", c, exists, err)
+	}
+	c.Debug = false
+	if err := Save(p, c); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); strings.Contains(string(b), "debug") {
+		t.Fatalf("debug was saved: %s", b)
+	}
+}
+
+func TestDebugFromEnv(t *testing.T) {
+	t.Setenv("VEP_DEBUG", "true")
+	if !DebugFromEnv() {
+		t.Error("true not seen")
+	}
+	t.Setenv("VEP_DEBUG", "")
+	if DebugFromEnv() {
+		t.Error("empty is on")
 	}
 }

@@ -15,6 +15,7 @@ services:
       VEP_HUB: ${VEP_HUB:-}
       VEP_PROTECT_DEVICE: ${VEP_PROTECT_DEVICE:-1}
       VEP_RESYNC_SECONDS: ${VEP_RESYNC_SECONDS:-60}
+      # true = log every line sent to and read from the Videohub (docker compose logs vep).
       VEP_DEBUG: ${VEP_DEBUG:-false}
 
   vhsim:
@@ -40,7 +41,7 @@ services:
       SODE_ROUTER: vep:8910
       SODE_LEVEL_COUNT: "1"
       SODE_LEVEL_WIRE_OFFSET: "-1"
-      SODE_NAME_LEN: "12"
+      SODE_NAME_LEN: "16"
 
 volumes:
   vep-data:

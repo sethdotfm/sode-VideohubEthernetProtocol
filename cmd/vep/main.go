@@ -85,7 +85,9 @@ func main() {
 	getCfg := func() config.Config { mu.RLock(); defer mu.RUnlock(); return cfg }
 
 	store := state.New()
-	hc := hub.New(store, getCfg, log.Printf)
+	debug := config.DebugFromEnv()
+	hubCfg := func() config.Config { c := getCfg(); c.Debug = debug; return c }
+	hc := hub.New(store, hubCfg, log.Printf)
 	br := bridge.New(store, hc, func() int { return getCfg().ProtectDevice }, log.Printf)
 
 	var saveMu sync.Mutex // one save at a time; disk I/O stays out of mu
