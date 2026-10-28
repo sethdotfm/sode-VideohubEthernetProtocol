@@ -1,6 +1,6 @@
 # Real Videohub:  VEP_HUB=10.0.0.60 docker compose up -d vep
-# Fake Videohub:  docker compose --profile sim up --build
-# + real Sode:    docker compose --profile sim --profile sode up --build
+# Fake Videohub:  VEP_HUB=vhsim docker compose --profile sim up --build
+# + real Sode:    VEP_HUB=vhsim docker compose --profile sim --profile sode up --build
 # The VEP_* settings only seed /data/config.yaml on first start; after that,
 # change them on the GUI (http://localhost:8081).
 services:
@@ -11,7 +11,8 @@ services:
     ports: ["${VEP_GUI_PORT:-8081}:8081", "${VEP_SWP08_PORT:-8910}:8910"]
     volumes: ["vep-data:/data"]
     environment:
-      VEP_HUB: ${VEP_HUB:-vhsim}
+      # Empty = idle until you set the address on the GUI. With the sim profile: VEP_HUB=vhsim
+      VEP_HUB: ${VEP_HUB:-}
       VEP_PROTECT_DEVICE: ${VEP_PROTECT_DEVICE:-1}
       VEP_RESYNC_SECONDS: ${VEP_RESYNC_SECONDS:-60}
       VEP_DEBUG: ${VEP_DEBUG:-false}

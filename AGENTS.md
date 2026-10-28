@@ -13,8 +13,8 @@ go test ./...        # all tests (the Dockerfile build runs them too)
 go vet ./...
 go run ./cmd/vhsim                          # fake Videohub on :9990
 VEP_HUB=127.0.0.1 go run ./cmd/vep          # SW-P-08 on :8910, GUI on :8081
-docker compose --profile sim up --build     # bridge + fake hub
-docker compose --profile sim --profile sode up --build   # + real Sode on :8080
+VEP_HUB=vhsim docker compose --profile sim up --build     # bridge + fake hub
+VEP_HUB=vhsim docker compose --profile sim --profile sode up --build   # + real Sode on :8080
 ```
 
 Without `VEP_CONFIG`, config comes from `VEP_*` env and is not persisted. The web UI is embedded with `go:embed`: restart after frontend edits.
@@ -32,13 +32,13 @@ Without `VEP_CONFIG`, config comes from `VEP_*` env and is not persisted. The we
 ## Architecture
 
 - `internal/state`: `Store` is the cache and the only shared state. The hub client is its only writer (`SetUp`, `SetDown`, `ApplyRoutes/Labels/Locks`, each returns/publishes only *real* changes); the SW-P-08 server and the web page `Subscribe` for events (a slow subscriber gets `EvResync` and re-reads `Snapshot`). `Router.Take(out, in)` is how a take goes to the hub.
-- `internal/hub`: Videohub client. Text blocks: `HEADER:` line, `index value` lines, blank line ends; prelude ends with `END PRELUDE:`. Route with `VIDEO OUTPUT ROUTING:\n<out> <in>\n\n` → `ACK`/`NAK`. `PING:` keepalive, reconnect with backoff, periodic resync of labels/routes/locks.
+- `internal/hub`: Videohub client. Text blocks: `HEADER:` line, `index value` lines, blank line ends. Prelude order (v2.3): preamble, device, labels, routing, then locks. `END PRELUDE:` is *not* in the v2.3 document (newer firmware may send it): the initial dump is also taken as complete once the routing and locks blocks have arrived and 750ms of quiet follows. Locks are per client: `O` = ours, `L` = another client's. Route with `VIDEO OUTPUT ROUTING:\n<out> <in>\n\n` → `ACK`/`NAK`. `PING:` keepalive, reconnect with backoff, periodic resync of labels/routes/locks.
 - `internal/bridge`: SW-P-08 server, modelled on Sode's `swp08sim`. Rules:
   - ACK every valid frame at once, never wait on the hub (Sode's writer sends one message per ACK); NAK bad frames.
   - 0x82 connect → `Router.Take`; reply only via the hub's resulting route change as 0x84 to **all** clients. A no-op connect or a hub NAK sends nothing (like the Ultrix; Sode's take interrogates and times out honestly).
   - 0x81 → 0x83 from cache. 0x95 → 0x97, 64 per message. Names: std (0x64/0x66) and extended (0xE4/0xE6), cut to the asked length, folded to printable ASCII.
   - Locks L/O → protected by `protectDevice`. 0x93 → 0x94 dump (state in bits 4-5 of byte 1, device in the rest, verified against a real Ultrix). Changes pushed as 0x8D/0x8F, built to round-trip through `swp08.Parse`; Sode's periodic re-poll is the fallback. A connect to a locked output is not sent to the hub.
-  - Hub down → close every session and refuse new ones until `END PRELUDE`. Sode reconnects and re-polls on its own.
+  - Hub down → close every session and refuse new ones until the hub's initial dump is complete again. Sode reconnects and re-polls on its own.
 - `internal/config`: `Defaults` → `FromEnv` (seed) → `Normalize`/`Validate`; YAML load/save.
 - `internal/web` + `web/`: `/`, `/healthz`, `/api/state`, `/api/config`, `/events` (SSE, no websocket dep).
 - `cmd/vhsim`: fake Videohub; **must keep mimicking real hardware quirks** (record them below as they are verified).
