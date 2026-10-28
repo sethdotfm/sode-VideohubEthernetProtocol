@@ -19,10 +19,9 @@ import (
 	"github.com/sethdotfm/sode-vep/internal/config"
 	"github.com/sethdotfm/sode-vep/internal/hub"
 	"github.com/sethdotfm/sode-vep/internal/state"
+	"github.com/sethdotfm/sode-vep/internal/version"
 	"github.com/sethdotfm/sode-vep/internal/web"
 )
-
-const version = "0.1.0"
 
 func env(k, def string) string {
 	if v := os.Getenv(k); v != "" {
@@ -119,7 +118,7 @@ func main() {
 		SetConfig: setCfg,
 		Clients:   br.Clients,
 		Info: func() web.Info {
-			return web.Info{Listen: swAddr, Started: started, Version: version, LastResync: hc.LastResync(), HubAddr: getCfg().HubAddr()}
+			return web.Info{Listen: swAddr, Started: started, Version: version.Label(), LastResync: hc.LastResync(), HubAddr: getCfg().HubAddr()}
 		},
 	})
 
@@ -147,7 +146,7 @@ func main() {
 		defer cancel()
 		srv.Shutdown(sctx)
 	}()
-	log.Printf("vep %s: gui on %s, swp08 on %s, hub %q", version, httpAddr, swAddr, getCfg().HubAddr())
+	log.Printf("vep %s: gui on %s, swp08 on %s, hub %q", version.Label(), httpAddr, swAddr, getCfg().HubAddr())
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}

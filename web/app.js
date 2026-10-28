@@ -97,7 +97,7 @@ function renderRows() {
   )));
   const long = countLong(st?.outputs ?? []) + countLong(st?.inputs ?? []);
   $('long-note').hidden = !long;
-  $('long-note').textContent = long ? `${long} name${long === 1 ? ' is' : 's are'} longer than ${NAME_MAX} characters: the part past ${NAME_MAX} is shown in red and is cut off in SW-P-08.` : '';
+  $('long-note').replaceChildren(long ? el('div', null, el('span', 'pb-alert__title', `${long} name${long === 1 ? '' : 's'} too long`), ` · red is cut off in SW-P-08 (max ${NAME_MAX})`) : '');
   $('count').textContent = rows.length ? `${shown.length} of ${rows.length}` : '';
   const empty = $('empty');
   empty.hidden = shown.length > 0;

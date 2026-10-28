@@ -28,6 +28,7 @@ Without `VEP_CONFIG`, config comes from `VEP_*` env and is not persisted. The we
 - SW-P-08 names are 16 characters at most; the page shows anything past 16 in red (with a text note), and the README tells users to set `SODE_NAME_LEN=16`.
 - Frontend: vanilla JS ES modules, no build step. Follow patchbay rules exactly (https://github.com/sethdotfm/patchbay llms.txt): `pb-` classes only, tokens only, no Bootstrap utilities, no border-radius, status always with text. Patchbay is vendored under `web/vendor/patchbay`; copy missing icons from upstream, don't fake them. It must look and feel like Sode.
 - **Build DOM with `el()`, never `innerHTML`**: labels come from the hub.
+- Version (Beta 1.0): `Stage`/`Version` in `internal/version/version.go`, shown on the page, noted in README's `**Version:**` line. **Every release bumps both**; `TestVersionNoted` fails if they differ or (with `VEP_RELEASE_TAG=v1.0`) if the tag differs. Pushing a `v*` tag runs `.github/workflows/image.yml`, which publishes `ghcr.io/sethdotfm/sode-vep`.
 - `internal/swp08` is copied from Sode (its `internal/` can't be imported). Fix bugs here, then tell the user so Sode can take them.
 
 ## Architecture

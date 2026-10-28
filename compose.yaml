@@ -6,7 +6,7 @@
 services:
   vep:
     build: { context: ., target: vep }
-    image: vep
+    image: ghcr.io/sethdotfm/sode-vep:latest
     restart: unless-stopped
     ports: ["${VEP_GUI_PORT:-8081}:8081", "${VEP_SWP08_PORT:-8910}:8910"]
     volumes: ["vep-data:/data"]
