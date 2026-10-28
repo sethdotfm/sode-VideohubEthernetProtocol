@@ -13,8 +13,8 @@ go test ./...        # all tests (the Dockerfile build runs them too)
 go vet ./...
 go run ./cmd/vhsim                          # fake Videohub on :9990
 VEP_HUB=127.0.0.1 go run ./cmd/vep          # SW-P-08 on :8910, GUI on :8081
-docker compose --profile sim up --build     # bridge + fake hub
-docker compose --profile sim --profile sode up --build   # + real Sode on :8080
+VEP_HUB=vhsim docker compose --profile sim up --build     # bridge + fake hub
+VEP_HUB=vhsim docker compose --profile sim --profile sode up --build   # + real Sode on :8080
 ```
 
 Without `VEP_CONFIG`, config comes from `VEP_*` env and is not persisted. The web UI is embedded with `go:embed`: restart after frontend edits.

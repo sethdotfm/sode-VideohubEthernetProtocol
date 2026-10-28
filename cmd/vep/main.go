@@ -88,21 +88,24 @@ func main() {
 	hc := hub.New(store, getCfg, log.Printf)
 	br := bridge.New(store, hc, func() int { return getCfg().ProtectDevice }, log.Printf)
 
+	var saveMu sync.Mutex // one save at a time; disk I/O stays out of mu
 	setCfg := func(n config.Config) error {
-		mu.Lock()
-		defer mu.Unlock()
 		if err := n.Validate(); err != nil {
 			return err
 		}
+		saveMu.Lock()
+		defer saveMu.Unlock()
 		if cfgPath != "" {
 			if err := config.Save(cfgPath, n); err != nil {
 				return err
 			}
 		}
+		mu.Lock()
 		old := cfg
 		cfg = n
+		mu.Unlock()
 		if old.Hub != n.Hub {
-			go hc.Reconfigure() // outside the lock: it reads the config
+			hc.Reconfigure()
 		}
 		return nil
 	}
@@ -134,7 +137,9 @@ func main() {
 
 	// No WriteTimeout: it would cut the /events stream.
 	srv := &http.Server{Addr: httpAddr, Handler: ui, ReadHeaderTimeout: 10 * time.Second}
+	drained := make(chan struct{})
 	go func() {
+		defer close(drained)
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -144,4 +149,5 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+	<-drained
 }

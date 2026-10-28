@@ -329,8 +329,14 @@ func (s *session) collect(b *block) {
 		s.finish()
 		return
 	}
-	if s.gotRT && s.gotLK && !s.devBad {
-		s.quietTm.Reset(s.c.quiet)
+	// Routing is enough to be ready once the hub has been quiet for longer:
+	// a hub with no locks block and no END PRELUDE would otherwise never be.
+	if s.gotRT && !s.devBad {
+		if s.gotLK {
+			s.quietTm.Reset(s.c.quiet)
+		} else {
+			s.quietTm.Reset(4 * s.c.quiet)
+		}
 	}
 }
 
@@ -342,7 +348,7 @@ func (s *session) quietFired() {
 		return
 	default:
 	}
-	if s.gotRT && s.gotLK {
+	if s.gotRT {
 		s.finish()
 	}
 }
