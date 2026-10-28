@@ -1,0 +1,46 @@
+# Real Videohub:  VEP_HUB=10.0.0.60 docker compose up -d vep
+# Fake Videohub:  docker compose --profile sim up --build
+# + real Sode:    docker compose --profile sim --profile sode up --build
+# The VEP_* settings only seed /data/config.yaml on first start; after that,
+# change them on the GUI (http://localhost:8081).
+services:
+  vep:
+    build: { context: ., target: vep }
+    image: vep
+    restart: unless-stopped
+    ports: ["8081:8081", "8910:8910"]
+    volumes: ["vep-data:/data"]
+    environment:
+      VEP_HUB: ${VEP_HUB:-vhsim}
+      VEP_PROTECT_DEVICE: ${VEP_PROTECT_DEVICE:-1}
+      VEP_RESYNC_SECONDS: ${VEP_RESYNC_SECONDS:-60}
+      VEP_DEBUG: ${VEP_DEBUG:-false}
+
+  vhsim:
+    build: { context: ., target: sim }
+    image: vhsim
+    profiles: ["sim"]
+    ports: ["9990:9990"]
+    environment:
+      VHSIM_INPUTS: ${VHSIM_INPUTS:-40}
+      VHSIM_OUTPUTS: ${VHSIM_OUTPUTS:-40}
+      # Seconds between routes the sim makes itself, like a hardware panel; 0 = off.
+      VHSIM_PANEL_SECONDS: ${VHSIM_PANEL_SECONDS:-0}
+      # Outputs locked by "another client", e.g. 3,5
+      VHSIM_LOCKS: ${VHSIM_LOCKS:-3}
+
+  # The real Sode, pointed at the bridge. Sode's own settings are seeded on first start.
+  sode:
+    image: ghcr.io/sethdotfm/sode:latest
+    profiles: ["sode"]
+    ports: ["8080:8080"]
+    volumes: ["sode-data:/data"]
+    environment:
+      SODE_ROUTER: vep:8910
+      SODE_LEVEL_COUNT: "1"
+      SODE_LEVEL_WIRE_OFFSET: "-1"
+      SODE_NAME_LEN: "12"
+
+volumes:
+  vep-data:
+  sode-data:
