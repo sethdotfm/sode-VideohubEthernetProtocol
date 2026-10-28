@@ -10,7 +10,7 @@ A small bridge that makes one **Blackmagic Videohub** look like an **SW-P-08 rou
 VEP_HUB=10.0.0.60 docker compose up -d vep        # your Videohub's IP
 ```
 
-Then open http://localhost:8081. Settings are saved to `/data/config.yaml` (a volume); `VEP_*` variables only seed the file on first start.
+Then open http://localhost:8081. Settings are saved to `/data/config.yaml` (a volume); `VEP_*` variables only seed the file on first start. **If you tried the sim profile first, the file already says `hub: vhsim` and `VEP_HUB` is ignored:** set the address on the GUI, or run `docker compose down -v` to start clean.
 
 Try it without hardware: `docker compose --profile sim --profile sode up --build` starts a fake Videohub, the bridge and the real Sode image (Sode on :8080).
 
