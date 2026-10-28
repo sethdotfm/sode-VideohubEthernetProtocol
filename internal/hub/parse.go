@@ -40,6 +40,11 @@ func (p *parser) feed(line string) (b *block, reply string) {
 		p.in = false
 		return &block{hdr: p.hdr, lines: p.lines}, ""
 	}
+	if len(p.lines) >= 2*maxIndex+64 {
+		// A block that never ends: drop it rather than grow without bound.
+		p.in, p.lines = false, nil
+		return nil, ""
+	}
 	p.lines = append(p.lines, line)
 	return nil, ""
 }

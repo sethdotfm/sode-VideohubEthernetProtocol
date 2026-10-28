@@ -73,3 +73,14 @@ func TestSanitize(t *testing.T) {
 		}
 	}
 }
+
+func TestEndlessBlockIsDropped(t *testing.T) {
+	var p parser
+	p.feed("INPUT LABELS:")
+	for i := 0; i < 3*maxIndex; i++ {
+		p.feed("0 x")
+	}
+	if len(p.lines) > 2*maxIndex+64 {
+		t.Fatalf("parser holds %d lines", len(p.lines))
+	}
+}

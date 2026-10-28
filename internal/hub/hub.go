@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"strconv"
 	"strings"
@@ -119,18 +120,25 @@ func (c *Client) Run(ctx context.Context) {
 	backoff := c.backoffMin
 	for ctx.Err() == nil {
 		c.store.SetDown()
+		// cancel is installed before the address is read, so a Reconfigure
+		// racing with this loop either cancels this session or leaves a
+		// token that ends the next wait.
+		actx, cancel := context.WithCancel(ctx)
+		c.mu.Lock()
+		c.cancel = cancel
+		c.mu.Unlock()
 		addr := c.cfg().HubAddr()
 		if addr == "" {
 			select {
 			case <-ctx.Done():
 			case <-c.reconf:
 			}
+			c.mu.Lock()
+			c.cancel = nil
+			c.mu.Unlock()
+			cancel()
 			continue
 		}
-		actx, cancel := context.WithCancel(ctx)
-		c.mu.Lock()
-		c.cancel = cancel
-		c.mu.Unlock()
 		wasReady, err := c.session(actx, addr)
 		c.mu.Lock()
 		c.cancel = nil
@@ -169,6 +177,7 @@ type session struct {
 	ready   bool
 	devBad  bool
 	dev     map[string]string
+	nin     int // input count fixed at ready
 	inL     map[int]string
 	outL    map[int]string
 	route   map[int]int
@@ -266,13 +275,22 @@ func (s *session) handle(b *block) {
 	}
 	s.mu.Unlock()
 	st := s.c.store
+	s.mu.Lock()
+	nin := s.nin
+	s.mu.Unlock()
 	switch b.hdr {
 	case hdrInLbl:
 		st.ApplyLabels(labelMap(b.lines), nil)
 	case hdrOutLbl:
 		st.ApplyLabels(nil, labelMap(b.lines))
 	case hdrRoute:
-		st.ApplyRoutes(routeMap(b.lines))
+		rt := routeMap(b.lines)
+		for o, in := range rt {
+			if in >= nin {
+				rt[o] = -1
+			}
+		}
+		st.ApplyRoutes(rt)
 	case hdrLock:
 		st.ApplyLocks(lockMap(b.lines))
 	case hdrDevice:
@@ -298,13 +316,15 @@ func (s *session) collect(b *block) {
 			s.devBad = false
 		}
 	case hdrInLbl:
-		s.inL = labelMap(b.lines)
+		maps.Copy(s.inL, labelMap(b.lines))
 	case hdrOutLbl:
-		s.outL = labelMap(b.lines)
+		maps.Copy(s.outL, labelMap(b.lines))
 	case hdrRoute:
-		s.route, s.gotRT = routeMap(b.lines), true
+		maps.Copy(s.route, routeMap(b.lines))
+		s.gotRT = true
 	case hdrLock:
-		s.lock, s.gotLK = lockMap(b.lines), true
+		maps.Copy(s.lock, lockMap(b.lines))
+		s.gotLK = true
 	case hdrEnd:
 		s.finish()
 		return
@@ -360,10 +380,11 @@ func (s *session) finish() {
 		}
 	}
 	for i, v := range s.route {
-		if i < nout {
+		if i < nout && v < nin {
 			route[i] = v
 		}
 	}
+	s.nin = nin
 	for i, v := range s.lock {
 		if i < nout {
 			lock[i] = v

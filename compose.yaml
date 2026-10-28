@@ -8,7 +8,7 @@ services:
     build: { context: ., target: vep }
     image: vep
     restart: unless-stopped
-    ports: ["8081:8081", "8910:8910"]
+    ports: ["${VEP_GUI_PORT:-8081}:8081", "${VEP_SWP08_PORT:-8910}:8910"]
     volumes: ["vep-data:/data"]
     environment:
       VEP_HUB: ${VEP_HUB:-vhsim}
@@ -20,7 +20,7 @@ services:
     build: { context: ., target: sim }
     image: vhsim
     profiles: ["sim"]
-    ports: ["9990:9990"]
+    ports: ["${VHSIM_PORT:-9990}:9990"]
     environment:
       VHSIM_INPUTS: ${VHSIM_INPUTS:-40}
       VHSIM_OUTPUTS: ${VHSIM_OUTPUTS:-40}
@@ -33,7 +33,7 @@ services:
   sode:
     image: ghcr.io/sethdotfm/sode:latest
     profiles: ["sode"]
-    ports: ["8080:8080"]
+    ports: ["${SODE_PORT:-8080}:8080"]
     volumes: ["sode-data:/data"]
     environment:
       SODE_ROUTER: vep:8910
