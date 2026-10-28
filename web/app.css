@@ -1,0 +1,137 @@
+/* The Sode · Videohub page. Tokens only; components come from patchbay.
+   Layout and look follow Sode's base.css / desktop.css (same names, vep__ for sode__). */
+
+:root {
+  --vep-scale: 1.25; /* whole-UI scale, as Sode's --sode-scale */
+  --vep-pad-bottom: var(--pb-space-8);
+  --pb-font-mono: var(--pb-font); /* Plex Sans throughout, numbers too */
+}
+body { zoom: var(--vep-scale); }
+
+code {
+  background: var(--pb-surface-sunken);
+  border: var(--pb-border-w) solid var(--pb-edge-soft);
+  color: var(--pb-text);
+  padding: 0 var(--pb-space-1);
+}
+
+.vep {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-8);
+  margin: 0 auto;
+  max-width: 1200px;
+  padding: 10vh var(--pb-space-8) var(--vep-pad-bottom);
+}
+.vep__mark {
+  color: var(--pb-text-strong);
+  font-size: calc(var(--pb-text-xl) * 2.5);
+  font-weight: var(--pb-weight-bold);
+  letter-spacing: var(--pb-tracking-label);
+  margin: 0;
+}
+
+/* Connection status, out of the way in the top corner. */
+.vep__conn {
+  align-items: center;
+  background: var(--pb-surface-base);
+  color: var(--pb-text-muted);
+  display: flex;
+  font-size: var(--pb-text-xs);
+  gap: var(--pb-space-4);
+  padding: var(--pb-space-2) var(--pb-space-3);
+  position: fixed;
+  right: var(--pb-space-5);
+  top: var(--pb-space-4);
+  z-index: var(--pb-z-sticky);
+}
+
+.vep__view {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--pb-space-10) + var(--pb-space-5));
+  width: 100%;
+}
+
+/* Section: a rule across the column with the name under it. */
+.vep__group {
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-5);
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+.vep__group > legend,
+.vep__legend {
+  border-top: var(--pb-border-w) solid var(--pb-edge);
+  color: var(--pb-text-strong);
+  font-size: var(--pb-text-md);
+  font-weight: var(--pb-weight-bold);
+  margin: 0 0 var(--pb-space-3);
+  padding: var(--pb-space-5) 0 0;
+  width: 100%;
+}
+.vep__settings { align-self: center; max-width: 640px; width: 100%; }
+
+.vep__fields {
+  display: grid;
+  gap: var(--pb-space-5);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.vep__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-2);
+}
+.vep__field > label { color: var(--pb-text); font-weight: var(--pb-weight-medium); }
+.vep__field .pb-input,
+.vep__field .pb-select,
+.vep__field .pb-select-wrap { width: 100%; }
+.vep__label {
+  color: var(--pb-text-muted);
+  font-size: var(--pb-text-xs);
+  letter-spacing: var(--pb-tracking-label);
+  text-transform: uppercase;
+}
+.vep__hint {
+  color: var(--pb-text-muted);
+  font-size: var(--pb-text-xs);
+}
+
+.vep__savebar {
+  background: var(--pb-surface-base);
+  border-top: var(--pb-border-w) solid var(--pb-edge);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-3);
+  padding: var(--pb-space-5) 0 0;
+}
+.vep__savebar-row {
+  align-items: center;
+  display: flex;
+  gap: var(--pb-space-5);
+  justify-content: space-between;
+}
+/* Save is green (the ok status color), as in Sode. */
+.vep__save {
+  background-color: var(--pb-status-ok);
+  color: var(--pb-text-on-accent);
+}
+.vep__save:hover { background-color: color-mix(in srgb, var(--pb-status-ok) 85%, black); }
+
+.vep__line {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pb-space-4) var(--pb-space-6);
+}
+.vep__filter { flex: 0 1 20rem; min-width: 10rem; }
+.vep__scroll { overflow-x: auto; }
+.vep__scroll td { white-space: nowrap; }
+.vep__num { font-family: var(--pb-font-mono); }
+.vep__dim { color: var(--pb-text-muted); }
+.vep__name { max-width: 20rem; overflow: hidden; text-overflow: ellipsis; }
