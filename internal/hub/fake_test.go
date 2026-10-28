@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // A minimal fake Videohub derived from cmd/vhsim (package main, so it cannot
@@ -41,6 +42,7 @@ type fakeHub struct {
 	present    string
 	silent     atomic.Bool
 	once       sync.Once
+	routeReqs  []int // output of every routing request received, in order
 }
 
 func newFakeHub(t interface{ Cleanup(func()) }, nin, nout int) *fakeHub {
@@ -59,16 +61,17 @@ func newFakeHub(t interface{ Cleanup(func()) }, nin, nout int) *fakeHub {
 		panic(err)
 	}
 	h.ln = ln
-	t.Cleanup(func() { _ = ln.Close(); h.dropAll() })
+	t.Cleanup(func() { h.mu.Lock(); l := h.ln; h.mu.Unlock(); _ = l.Close(); h.dropAll() })
 	return h
 }
 
 // serve starts accepting; tests configure the fake before calling it.
 func (h *fakeHub) serve() {
 	h.once.Do(func() {
+		ln := h.ln
 		go func() {
 			for {
-				conn, err := h.ln.Accept()
+				conn, err := ln.Accept()
 				if err != nil {
 					return
 				}
@@ -231,6 +234,10 @@ func (h *fakeHub) command(c *fclient, hd string, lines []string) {
 		c.write("NAK\n\n")
 		return
 	}
+	if hd == "VIDEO OUTPUT LOCKS" {
+		h.setLocks(c, lines)
+		return
+	}
 	if hd != "VIDEO OUTPUT ROUTING" {
 		c.write("NAK\n\n")
 		return
@@ -240,6 +247,9 @@ func (h *fakeHub) command(c *fclient, hd string, lines []string) {
 		a, b, _ := strings.Cut(l, " ")
 		out, e1 := strconv.Atoi(a)
 		in, e2 := strconv.Atoi(b)
+		if e1 == nil {
+			h.routeReqs = append(h.routeReqs, out)
+		}
 		if e1 != nil || e2 != nil || out < 0 || out >= len(h.route) || in < 0 || in >= len(h.inputs) ||
 			(h.owner[out] != nil && h.owner[out] != c) {
 			c.write("NAK\n\n")
@@ -252,4 +262,76 @@ func (h *fakeHub) command(c *fclient, hd string, lines []string) {
 	}
 	c.write("ACK\n\n")
 	h.broadcast(hd, changed)
+}
+
+// setLocks handles "<out> O" (take the lock) and "<out> U" (release it, only
+// by its owner). h.mu is held.
+func (h *fakeHub) setLocks(c *fclient, lines []string) {
+	var changed []int
+	for _, l := range lines {
+		a, b, _ := strings.Cut(l, " ")
+		out, err := strconv.Atoi(a)
+		if err != nil || out < 0 || out >= len(h.owner) || (b != "O" && b != "U") ||
+			(h.owner[out] != nil && h.owner[out] != c) {
+			c.write("NAK\n\n")
+			return
+		}
+		want := (*fclient)(nil)
+		if b == "O" {
+			want = c
+		}
+		if h.owner[out] != want {
+			h.owner[out] = want
+			changed = append(changed, out)
+		}
+	}
+	c.write("ACK\n\n")
+	h.broadcast("VIDEO OUTPUT LOCKS", changed)
+}
+
+// routeRequests is a copy of the outputs routing was requested for.
+func (h *fakeHub) routeRequests() []int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]int(nil), h.routeReqs...)
+}
+
+// routeOf is the hub's current input for an output.
+func (h *fakeHub) routeOf(out int) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.route[out]
+}
+
+// stop closes the listener and every connection, as a powered-off hub does.
+func (h *fakeHub) stop() {
+	h.mu.Lock()
+	ln := h.ln
+	h.mu.Unlock()
+	_ = ln.Close()
+	h.dropAll()
+}
+
+// restart listens again on the same address.
+func (h *fakeHub) restart() error {
+	h.mu.Lock()
+	addr := h.ln.Addr().String()
+	h.mu.Unlock()
+	var ln net.Listener
+	var err error
+	for i := 0; i < 50; i++ {
+		if ln, err = net.Listen("tcp", addr); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err != nil {
+		return err
+	}
+	h.mu.Lock()
+	h.ln = ln
+	h.once = sync.Once{}
+	h.mu.Unlock()
+	h.serve()
+	return nil
 }
