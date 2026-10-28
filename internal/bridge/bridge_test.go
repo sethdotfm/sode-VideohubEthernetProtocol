@@ -396,3 +396,47 @@ func TestFold(t *testing.T) {
 		}
 	}
 }
+
+func TestTakesReachRouterInOrder(t *testing.T) {
+	s := New(state.New(), &slowRouter{}, nil, nil)
+	r := s.router.(*slowRouter)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.takeLoop(ctx)
+	for i := 0; i < 20; i++ {
+		s.takes <- take{i, i}
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		r.mu.Lock()
+		n := len(r.got)
+		r.mu.Unlock()
+		if n == 20 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, g := range r.got {
+		if g != i {
+			t.Fatalf("takes out of order: %v", r.got)
+		}
+	}
+	if len(r.got) != 20 {
+		t.Fatalf("got %d takes", len(r.got))
+	}
+}
+
+type slowRouter struct {
+	mu  sync.Mutex
+	got []int
+}
+
+func (r *slowRouter) Take(out, in int) error {
+	time.Sleep(time.Duration(20-out) * time.Millisecond) // earlier takes are slower
+	r.mu.Lock()
+	r.got = append(r.got, out)
+	r.mu.Unlock()
+	return nil
+}

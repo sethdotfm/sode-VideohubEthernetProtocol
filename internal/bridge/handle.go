@@ -39,11 +39,11 @@ func (s *Server) handle(c *client, m []byte) {
 		case state.Locked(snap.Lock[dst]):
 			s.logf("connect dst %d dropped: output is locked", dst)
 		default:
-			go func() {
-				if err := s.router.Take(dst, src); err != nil {
-					s.logf("take %d <- %d: %v", dst, src, err)
-				}
-			}()
+			select {
+			case s.takes <- take{dst, src}:
+			default:
+				s.logf("take %d <- %d dropped: queue full", dst, src)
+			}
 		}
 
 	case swp08.CmdExtTallyDumpReq:

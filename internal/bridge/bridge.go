@@ -20,11 +20,18 @@ const (
 	none         = 0xFFFF
 )
 
+type take struct{ out, in int }
+
 type Server struct {
 	store         *state.Store
 	router        state.Router
 	protectDevice func() int
 	logf          func(string, ...any)
+
+	// takes is the one ordered queue of connects for the hub, so takes
+	// reach it in the order Sode sent them and a slow hub never blocks a
+	// client's read loop.
+	takes chan take
 
 	mu      sync.Mutex
 	clients map[*client]struct{}
@@ -40,7 +47,7 @@ func New(store *state.Store, router state.Router, protectDevice func() int, logf
 		protectDevice = func() int { return 0 }
 	}
 	return &Server{store: store, router: router, protectDevice: protectDevice, logf: logf,
-		clients: map[*client]struct{}{}, down: true}
+		takes: make(chan take, 256), clients: map[*client]struct{}{}, down: true}
 }
 
 // Clients is how many SW-P-08 clients are connected now.
@@ -103,6 +110,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		ln.Close()
 	}()
 	go s.events(ctx, evs)
+	go s.takeLoop(ctx)
 
 	for {
 		conn, err := ln.Accept()
@@ -238,5 +246,19 @@ func (s *Server) serve(c *client) {
 				s.handle(c, f.Msg)
 			}
 		})
+	}
+}
+
+// takeLoop hands queued connects to the router one at a time.
+func (s *Server) takeLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case t := <-s.takes:
+			if err := s.router.Take(t.out, t.in); err != nil {
+				s.logf("take %d <- %d: %v", t.out, t.in, err)
+			}
+		}
 	}
 }
