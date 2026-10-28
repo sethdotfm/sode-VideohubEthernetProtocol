@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sode · Videohub</title>
+<script>
+  // Apply the saved theme before first paint, as Sode's index.html does.
+  (() => {
+    let theme = null;
+    try { theme = localStorage.getItem('sode-theme'); } catch (e) {}
+    if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme;
+  })();
+</script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/patchbay/css/bootstrap.min.css">
+<link rel="stylesheet" href="vendor/patchbay/css/patchbay.tokens.css">
+<link rel="stylesheet" href="vendor/patchbay/css/patchbay.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<main class="vep">
+  <div class="vep__conn" id="conn">
+    <span class="pb-status"><span class="pb-dot pb-dot--warn" id="conn-page-dot" aria-hidden="true"></span><span id="conn-page-text">Bridge</span></span>
+    <span class="pb-status"><span class="pb-dot pb-dot--idle" id="conn-hub-dot" aria-hidden="true"></span><span id="conn-hub-text">Videohub</span></span>
+  </div>
+
+  <h1 class="vep__mark">Sode · Videohub</h1>
+
+  <section class="vep__view">
+    <fieldset class="vep__group">
+      <legend>Status</legend>
+      <div class="vep__fields">
+        <div class="vep__field"><span class="vep__label">Videohub</span><span class="pb-status"><span class="pb-dot pb-dot--idle" id="st-hub-dot" aria-hidden="true"></span><span id="st-hub-text">Waiting</span></span><span class="vep__hint" id="st-hub-note"></span></div>
+        <div class="vep__field"><span class="vep__label">SW-P-08</span><span id="st-swp"></span><span class="vep__hint" id="st-swp-note"></span></div>
+        <div class="vep__field"><span class="vep__label">Last resync</span><span id="st-resync"></span></div>
+        <div class="vep__field"><span class="vep__label">Uptime</span><span id="st-uptime"></span><span class="vep__hint" id="st-version"></span></div>
+      </div>
+    </fieldset>
+
+    <form class="vep__group vep__settings" id="settings" novalidate autocomplete="off" aria-labelledby="settings-title">
+      <h2 class="vep__legend" id="settings-title">Settings</h2>
+      <div class="vep__fields">
+        <div class="vep__field">
+          <label for="cfg-hub">Videohub address</label>
+          <input id="cfg-hub" class="pb-input" spellcheck="false" placeholder="10.0.0.5 or 10.0.0.5:9990">
+          <span class="vep__hint">Port 9990 if left out.</span>
+        </div>
+        <div class="vep__field">
+          <label for="cfg-protect">Protect device number</label>
+          <input id="cfg-protect" class="pb-input" type="number" min="0" max="1023" step="1">
+          <span class="vep__hint">Shown to Sode as the device that holds locks. 0-1023.</span>
+        </div>
+        <div class="vep__field">
+          <label for="cfg-resync">Resync seconds</label>
+          <input id="cfg-resync" class="pb-input" type="number" min="5" max="3600" step="1">
+          <span class="vep__hint">How often names, routes and locks are re-read. 5-3600.</span>
+        </div>
+        <div class="vep__field">
+          <label for="cfg-theme">Theme</label>
+          <span class="pb-select-wrap"><select id="cfg-theme" class="pb-select"></select></span>
+          <span class="vep__hint" id="cfg-theme-hint">Saved in this browser only. <code>Alt+Shift+T</code> toggles.</span>
+        </div>
+      </div>
+      <label class="pb-check"><input type="checkbox" class="pb-check__input" id="cfg-debug"><span class="pb-check__label">Debug logging</span></label>
+      <div class="vep__savebar">
+        <div class="pb-note pb-note--error" id="settings-err" role="alert" hidden></div>
+        <div class="vep__savebar-row">
+          <span class="vep__hint" id="settings-note" role="status"></span>
+          <button type="submit" class="pb-btn vep__save" id="settings-save">Save</button>
+        </div>
+      </div>
+    </form>
+
+    <section class="vep__group" aria-labelledby="outputs-title">
+      <h2 class="vep__legend" id="outputs-title">Outputs</h2>
+      <div class="vep__line">
+        <input class="pb-input vep__filter" id="filter" type="search" placeholder="Filter outputs and inputs" aria-label="Filter by output or input name or number" spellcheck="false" autocomplete="off">
+        <span class="vep__hint" id="count" aria-live="polite"></span>
+      </div>
+      <div class="vep__scroll">
+        <table class="pb-table pb-table--compact">
+          <thead>
+            <tr>
+              <th scope="col">Output</th>
+              <th scope="col">Name</th>
+              <th scope="col">Routed from</th>
+              <th scope="col">Lock</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <span class="vep__hint" id="empty" hidden></span>
+    </section>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
