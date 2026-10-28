@@ -123,3 +123,33 @@ func TestDescribeTx(t *testing.T) {
 		}
 	}
 }
+
+func TestProtectBuildersRoundTrip(t *testing.T) {
+	ev, err := Parse(ExtProtectDump(0, 0, 62, []Protect{{Protected: true, Device: 9}, {}, {Protected: true, Device: 0x123}}))
+	if err != nil || len(ev.Protects) != 3 {
+		t.Fatalf("dump: %v %+v", err, ev)
+	}
+	want := []Protect{{0, 0, 62, true, 9}, {0, 0, 63, false, 0}, {0, 0, 64, true, 0x123}}
+	for i, p := range ev.Protects {
+		if p != want[i] {
+			t.Errorf("dump[%d] = %+v, want %+v", i, p, want[i])
+		}
+	}
+	// The packing the Ultrix uses: protected by device 9 is 0x20 0x09.
+	if m := ExtProtectDump(0, 0, 0, []Protect{{Protected: true, Device: 9}}); m[6] != 0x20 || m[7] != 9 {
+		t.Errorf("packing % X", m)
+	}
+	for _, c := range []struct {
+		msg  []byte
+		want Protect
+	}{
+		{ExtProtectTally(1, 0, 300, true, 7), Protect{1, 0, 300, true, 7}},
+		{ExtProtectConnected(1, 0, 300, 7), Protect{1, 0, 300, true, 7}},
+		{ExtProtectDisconnected(1, 0, 300), Protect{1, 0, 300, false, 0}},
+	} {
+		ev, err := Parse(c.msg)
+		if err != nil || len(ev.Protects) != 1 || ev.Protects[0] != c.want {
+			t.Errorf("% X: %v %+v, want %+v", c.msg, err, ev.Protects, c.want)
+		}
+	}
+}

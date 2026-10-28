@@ -136,6 +136,47 @@ func ExtTallyDump(matrix, level, firstDst int, srcs []int) []byte {
 	return m
 }
 
+// protectPack packs one protect entry as Parse reads it: state in bits 4-5
+// of the high byte (2 = protected), device number (12 bits) in the rest.
+func protectPack(protected bool, device int) (hi, lo byte) {
+	hi = byte(device>>8) & 0x0F
+	if protected {
+		hi |= 0x20
+	}
+	return hi, byte(device)
+}
+
+// ExtProtectDump builds one protect dump message: ps[i] describes
+// firstDst+i. Only Protected and Device of each entry are used.
+func ExtProtectDump(matrix, level, firstDst int, ps []Protect) []byte {
+	m := []byte{CmdExtProtectDump, byte(matrix), byte(level), byte(len(ps)), byte(firstDst >> 8), byte(firstDst)}
+	for _, p := range ps {
+		hi, lo := protectPack(p.Protected, p.Device)
+		m = append(m, hi, lo)
+	}
+	return m
+}
+
+func protectMsg(cmd byte, matrix, level, dst int, protected bool, device int) []byte {
+	hi, lo := protectPack(protected, device)
+	return []byte{cmd, byte(matrix), byte(level), byte(dst >> 8), byte(dst), hi, lo}
+}
+
+// ExtProtectTally answers a protect interrogate.
+func ExtProtectTally(matrix, level, dst int, protected bool, device int) []byte {
+	return protectMsg(CmdExtProtectTally, matrix, level, dst, protected, device)
+}
+
+// ExtProtectConnected announces dst became protected by device.
+func ExtProtectConnected(matrix, level, dst, device int) []byte {
+	return protectMsg(CmdExtProtectConnected, matrix, level, dst, true, device)
+}
+
+// ExtProtectDisconnected announces dst is no longer protected.
+func ExtProtectDisconnected(matrix, level, dst int) []byte {
+	return protectMsg(CmdExtProtectDisconnected, matrix, level, dst, false, 0)
+}
+
 // NamesReq requests all source (or destination association) names.
 func NamesReq(dest, ext bool, matrix, level int, lenCode byte) []byte {
 	if ext {
