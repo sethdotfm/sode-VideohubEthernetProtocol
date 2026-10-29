@@ -7,13 +7,6 @@ import (
 	"github.com/sethdotfm/sode-vep/internal/swp08"
 )
 
-// request is a parsed client command; only the fields its command uses are set.
-type request struct {
-	mx, level, dst, src, first int
-	dest, ext                  bool
-	code                       byte
-}
-
 // minLen is the shortest valid message for each command the server answers.
 var minLen = map[byte]int{
 	swp08.CmdExtInterrogate:    5,
@@ -26,109 +19,97 @@ var minLen = map[byte]int{
 	swp08.CmdDstNamesReq:       3,
 }
 
-// parseRequest checks the message is long enough for its command and records
-// the client's matrix. ok is false for short or unknown messages.
-func (s *Server) parseRequest(c *client, m []byte) (r request, ok bool) {
-	need, known := minLen[m[0]]
-	if !known {
-		s.logf("ignored cmd 0x%02X", m[0])
-		return r, false
-	}
-	if len(m) < need {
-		return r, false
-	}
-	r.ext = m[0] >= 0x80
-	if r.ext {
-		r.mx, r.level = int(m[1]), int(m[2])
-	} else {
-		r.mx, r.level = int(m[1]>>4), int(m[1]&0x0f)
-	}
-	c.matrix.Store(int32(r.mx))
-	switch m[0] {
-	case swp08.CmdExtInterrogate:
-		r.dst = int(m[3])<<8 | int(m[4])
-	case swp08.CmdExtConnect:
-		r.dst, r.src = int(m[3])<<8|int(m[4]), int(m[5])<<8|int(m[6])
-	case swp08.CmdExtProtectDumpReq:
-		if len(m) >= 5 {
-			r.first = int(m[3])<<8 | int(m[4])
-		}
-	case swp08.CmdSrcNamesReq, swp08.CmdDstNamesReq, swp08.CmdExtSrcNamesReq, swp08.CmdExtDstNamesReq:
-		r.dest = m[0] == swp08.CmdDstNamesReq || m[0] == swp08.CmdExtDstNamesReq
-		r.code = m[len(m)-1] & 3
-	}
-	return r, true
-}
-
+// handle answers one client message. minLen is the only length guard.
 func (s *Server) handle(c *client, m []byte) {
 	snap := s.store.Snapshot()
 	if !snap.Up {
 		return
 	}
-	r, ok := s.parseRequest(c, m)
-	if !ok {
+	need, known := minLen[m[0]]
+	if !known {
+		s.logf("ignored cmd 0x%02X", m[0])
 		return
 	}
+	if len(m) < need {
+		return
+	}
+	// Extended messages carry matrix and level in separate bytes, std ones
+	// in the high and low nibble of byte 1. Pushes go to the matrix the
+	// client last used.
+	mx, level := int(m[1]), int(m[2])
+	if m[0] < 0x80 {
+		mx, level = int(m[1]>>4), int(m[1]&0x0f)
+	}
+	c.matrix.Store(int32(mx))
 	switch m[0] {
 	case swp08.CmdExtInterrogate:
-		if r.dst < len(snap.Route) {
-			c.msg(swp08.ExtTally(r.mx, r.level, r.dst, srcOf(snap, r.level, r.dst)))
+		dst := int(m[3])<<8 | int(m[4])
+		if dst < len(snap.Route) {
+			c.msg(swp08.ExtTally(mx, level, dst, srcOf(snap, level, dst)))
 		}
 	case swp08.CmdExtConnect:
-		s.connect(r, snap)
+		s.connect(snap, level, int(m[3])<<8|int(m[4]), int(m[5])<<8|int(m[6]))
 	case swp08.CmdExtTallyDumpReq:
 		chunks(len(snap.Route), 64, func(i, end int) {
 			srcs := make([]int, 0, end-i)
 			for d := i; d < end; d++ {
-				srcs = append(srcs, srcOf(snap, r.level, d))
+				srcs = append(srcs, srcOf(snap, level, d))
 			}
-			c.msg(swp08.ExtTallyDump(r.mx, r.level, i, srcs))
+			c.msg(swp08.ExtTallyDump(mx, level, i, srcs))
 		})
 	case swp08.CmdExtProtectDumpReq:
+		first := 0
+		if len(m) >= 5 {
+			first = int(m[3])<<8 | int(m[4])
+		}
 		dev := s.protectDevice()
-		chunks(len(snap.Lock)-r.first, 64, func(i, end int) {
+		chunks(len(snap.Lock)-first, 64, func(i, end int) {
 			ps := make([]swp08.Protect, 0, end-i)
-			for d := r.first + i; d < r.first+end; d++ {
-				ps = append(ps, swp08.Protect{Protected: r.level == 0 && state.Locked(snap.Lock[d]), Device: dev})
+			for d := first + i; d < first+end; d++ {
+				ps = append(ps, swp08.Protect{Protected: level == 0 && state.Locked(snap.Lock[d]), Device: dev})
 			}
-			c.msg(swp08.ExtProtectDump(r.mx, r.level, r.first+i, ps))
+			c.msg(swp08.ExtProtectDump(mx, level, first+i, ps))
 		})
-	default:
-		names(c, r, snap)
+	case swp08.CmdSrcNamesReq, swp08.CmdExtSrcNamesReq:
+		names(c, snap, m, false, mx, level)
+	case swp08.CmdDstNamesReq, swp08.CmdExtDstNamesReq:
+		names(c, snap, m, true, mx, level)
 	}
 }
 
 // connect queues a take for the hub unless it is out of range, on another level or locked.
-func (s *Server) connect(r request, snap state.Snapshot) {
+func (s *Server) connect(snap state.Snapshot, level, dst, src int) {
 	switch {
-	case r.level != 0:
-		s.logf("connect on level %d ignored (only level 0 is routed)", r.level)
-	case r.dst >= len(snap.Route) || r.src >= len(snap.Inputs):
-		s.logf("connect out of range: dst %d src %d", r.dst, r.src)
-	case state.Locked(snap.Lock[r.dst]):
-		s.logf("connect dst %d dropped: output is locked", r.dst)
+	case level != 0:
+		s.logf("connect on level %d ignored (only level 0 is routed)", level)
+	case dst >= len(snap.Route) || src >= len(snap.Inputs):
+		s.logf("connect out of range: dst %d src %d", dst, src)
+	case state.Locked(snap.Lock[dst]):
+		s.logf("connect dst %d dropped: output is locked", dst)
 	default:
 		select {
-		case s.takes <- take{r.dst, r.src}:
+		case s.takes <- take{dst, src}:
 		default:
-			s.logf("take %d <- %d dropped: queue full", r.dst, r.src)
+			s.logf("take %d <- %d dropped: queue full", dst, src)
 		}
 	}
 }
 
 // names answers a names request: std or extended, cut to the asked length, folded to ASCII.
-func names(c *client, r request, snap state.Snapshot) {
+func names(c *client, snap state.Snapshot, m []byte, dest bool, mx, level int) {
+	ext := m[0] >= 0x80
+	code := m[len(m)-1] & 3
 	list := snap.Inputs
-	if r.dest {
+	if dest {
 		list = snap.Outputs
 	}
-	size := swp08.NameLen(r.code)
-	chunks(len(list), swp08.NamesPerMsg(r.code), func(i, end int) {
+	size := swp08.NameLen(code)
+	chunks(len(list), swp08.NamesPerMsg(code), func(i, end int) {
 		fit := make([]string, 0, end-i)
 		for _, n := range list[i:end] {
 			fit = append(fit, fold(n, size))
 		}
-		c.msg(swp08.NamesResp(r.dest, r.ext, r.mx, r.level, r.code, i, fit))
+		c.msg(swp08.NamesResp(dest, ext, mx, level, code, i, fit))
 	})
 }
 
