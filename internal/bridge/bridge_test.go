@@ -451,7 +451,7 @@ func TestQueuedTakesDroppedWhileHubDown(t *testing.T) {
 	s.takes <- take{1, 0}
 	s.takes <- take{0, 0}
 	st.SetDown()
-	s.setDown(true)
+	s.drainTakes()
 	if len(s.takes) != 0 {
 		t.Fatalf("%d takes still queued after hub down", len(s.takes))
 	}
