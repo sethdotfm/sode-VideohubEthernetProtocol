@@ -41,7 +41,7 @@ func start(t *testing.T, h *vhsim.Server, tune func(*Client)) *rig {
 	st := state.New()
 	cfg := config.Defaults()
 	cfg.Hub = h.Addr()
-	c := New(st, func() config.Config { return cfg }, t.Logf)
+	c := New(st, func() config.Config { return cfg }, t.Logf, false)
 	c.backoffMin, c.backoffMax = 20*time.Millisecond, 50*time.Millisecond
 	c.quiet = 80 * time.Millisecond
 	c.cmdTimeout = time.Second
@@ -199,12 +199,10 @@ func TestPingKeepsLinkAlive(t *testing.T) {
 
 func TestResyncAppliesHiddenLabelChange(t *testing.T) {
 	h := newHub(t, 2, 3)
-	r := start(t, h, nil)
+	r := start(t, h, func(c *Client) { c.resyncEvery = 80 * time.Millisecond })
 	r.expect("up", kind(state.EvUp))
 	h.SetOutputLabel(1, "Studio B")
 	before := r.c.LastResync()
-	time.Sleep(2 * time.Millisecond)
-	r.c.Resync()
 	e := r.expect("labels", kind(state.EvLabels))
 	if e.Out != 1 || e.Input || r.st.Snapshot().Outputs[1] != "Studio B" {
 		t.Fatalf("%+v %v", e, r.st.Snapshot().Outputs)
@@ -234,7 +232,7 @@ func TestReconfigureEmptyHubIdlesDown(t *testing.T) {
 	var mu = make(chan struct{}, 1)
 	mu <- struct{}{}
 	get := func() config.Config { <-mu; defer func() { mu <- struct{}{} }(); return cfg }
-	c := New(st, get, t.Logf)
+	c := New(st, get, t.Logf, false)
 	c.backoffMin, c.backoffMax, c.quiet = 20*time.Millisecond, 50*time.Millisecond, 50*time.Millisecond
 	ev, _ := st.Subscribe()
 	ctx, cancel := context.WithCancel(context.Background())

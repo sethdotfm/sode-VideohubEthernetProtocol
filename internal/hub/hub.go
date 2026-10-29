@@ -7,9 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,6 +39,7 @@ type Client struct {
 	store *state.Store
 	cfg   func() config.Config
 	logf  func(string, ...any)
+	debug bool // log Videohub wire traffic
 
 	// Timings; tests shorten them before Run.
 	dialTimeout time.Duration
@@ -55,17 +54,16 @@ type Client struct {
 	mu      sync.Mutex
 	cur     *session
 	cancel  context.CancelFunc // cancels the current attempt
-	resync  chan struct{}
 	reconf  chan struct{}
 	lastSyn atomic.Int64
 }
 
-func New(store *state.Store, cfg func() config.Config, logf func(string, ...any)) *Client {
+func New(store *state.Store, cfg func() config.Config, logf func(string, ...any), debug bool) *Client {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
 	return &Client{
-		store: store, cfg: cfg, logf: logf,
+		store: store, cfg: cfg, logf: logf, debug: debug,
 		dialTimeout: 5 * time.Second,
 		backoffMin:  time.Second,
 		backoffMax:  10 * time.Second,
@@ -73,7 +71,6 @@ func New(store *state.Store, cfg func() config.Config, logf func(string, ...any)
 		pingAfter:   10 * time.Second,
 		deadAfter:   15 * time.Second,
 		cmdTimeout:  3 * time.Second,
-		resync:      make(chan struct{}, 1),
 		reconf:      make(chan struct{}, 1),
 	}
 }
@@ -86,14 +83,6 @@ func (c *Client) LastResync() time.Time {
 		return time.Time{}
 	}
 	return time.Unix(0, n)
-}
-
-// Resync forces a re-poll of labels, routes and locks.
-func (c *Client) Resync() {
-	select {
-	case c.resync <- struct{}{}:
-	default:
-	}
 }
 
 // Reconfigure drops the connection so a changed hub address takes effect.
@@ -110,7 +99,7 @@ func (c *Client) Reconfigure() {
 }
 
 func (c *Client) debugf(format string, a ...any) {
-	if c.cfg().Debug {
+	if c.debug {
 		c.logf(format, a...)
 	}
 }
@@ -174,16 +163,8 @@ type session struct {
 	replies chan string
 
 	mu      sync.Mutex // guards the fields below
-	ready   bool
-	devBad  bool
-	dev     map[string]string
-	nin     int // input count fixed at ready
-	inL     map[int]string
-	outL    map[int]string
-	route   map[int]int
-	lock    map[int]byte
-	gotRT   bool
-	gotLK   bool
+	d       *dump      // the initial dump; nil once built, which is what ready means
+	nin     int        // input count fixed at ready
 	quietTm *time.Timer
 }
 
@@ -210,7 +191,7 @@ func (c *Client) session(ctx context.Context, addr string) (wasReady bool, err e
 	c.logf("hub %s: connected", addr)
 	s := &session{
 		c: c, conn: conn, done: make(chan struct{}), replies: make(chan string, 8),
-		inL: map[int]string{}, outL: map[int]string{}, route: map[int]int{}, lock: map[int]byte{},
+		d: newDump(),
 	}
 	s.lastRx.Store(time.Now().UnixNano())
 	s.quietTm = time.AfterFunc(time.Hour, s.quietFired)
@@ -236,7 +217,7 @@ func (c *Client) session(ctx context.Context, addr string) (wasReady bool, err e
 	s.quietTm.Stop()
 	wg.Wait()
 	s.mu.Lock()
-	wasReady = s.ready
+	wasReady = s.d == nil
 	s.mu.Unlock()
 	c.store.SetDown()
 	return wasReady, err
@@ -268,16 +249,14 @@ func (s *session) readLoop() error {
 
 func (s *session) handle(b *block) {
 	s.mu.Lock()
-	if !s.ready {
+	if s.d != nil {
 		s.collect(b)
 		s.mu.Unlock()
 		return
 	}
-	s.mu.Unlock()
-	st := s.c.store
-	s.mu.Lock()
 	nin := s.nin
 	s.mu.Unlock()
+	st := s.c.store
 	switch b.hdr {
 	case hdrInLbl:
 		st.ApplyLabels(labelMap(b.lines), nil)
@@ -302,41 +281,18 @@ func (s *session) handle(b *block) {
 	}
 }
 
-// collect gathers the initial dump. s.mu is held.
+// collect feeds the initial dump and arms the quiet fallback. s.mu is held.
 func (s *session) collect(b *block) {
-	switch b.hdr {
-	case hdrDevice:
-		s.dev = kv(b.lines)
-		if p := s.dev["Device present"]; p != "" && !strings.EqualFold(p, "true") {
-			if !s.devBad {
-				s.c.logf("hub: device present = %q, waiting", p)
-			}
-			s.devBad = true
-		} else {
-			s.devBad = false
-		}
-	case hdrInLbl:
-		maps.Copy(s.inL, labelMap(b.lines))
-	case hdrOutLbl:
-		maps.Copy(s.outL, labelMap(b.lines))
-	case hdrRoute:
-		maps.Copy(s.route, routeMap(b.lines))
-		s.gotRT = true
-	case hdrLock:
-		maps.Copy(s.lock, lockMap(b.lines))
-		s.gotLK = true
-	case hdrEnd:
+	wasBad := s.d.devBad
+	if s.d.add(b) {
 		s.finish()
 		return
 	}
-	// Routing is enough to be ready once the hub has been quiet for longer:
-	// a hub with no locks block and no END PRELUDE would otherwise never be.
-	if s.gotRT && !s.devBad {
-		if s.gotLK {
-			s.quietTm.Reset(s.c.quiet)
-		} else {
-			s.quietTm.Reset(4 * s.c.quiet)
-		}
+	if s.d.devBad && !wasBad {
+		s.c.logf("hub: device present = %q, waiting", s.d.dev["Device present"])
+	}
+	if w := s.d.quietWait(s.c.quiet); w > 0 {
+		s.quietTm.Reset(w)
 	}
 }
 
@@ -348,66 +304,20 @@ func (s *session) quietFired() {
 		return
 	default:
 	}
-	if s.gotRT {
+	if s.d != nil && s.d.quietWait(s.c.quiet) > 0 {
 		s.finish()
 	}
 }
 
 // finish publishes the initial dump. s.mu is held.
 func (s *session) finish() {
-	if s.ready || s.devBad {
-		return
-	}
 	s.quietTm.Stop()
-	nin, _ := strconv.Atoi(s.dev["Video inputs"])
-	nout, _ := strconv.Atoi(s.dev["Video outputs"])
-	if nin <= 0 || nin > maxIndex {
-		nin = maxKey(s.inL) + 1
-		if nin > maxIndex {
-			nin = maxIndex
-		}
-	}
-	if nout <= 0 || nout > maxIndex {
-		nout = max(maxKey(s.outL), maxKey(s.route), maxKey(s.lock)) + 1
-	}
-	inputs, outputs := make([]string, nin), make([]string, nout)
-	route, lock := make([]int, nout), make([]byte, nout)
-	for i := range route {
-		route[i], lock[i] = -1, state.Unlocked
-	}
-	for i, v := range s.inL {
-		if i < nin {
-			inputs[i] = v
-		}
-	}
-	for i, v := range s.outL {
-		if i < nout {
-			outputs[i] = v
-		}
-	}
-	for i, v := range s.route {
-		if i < nout && v < nin {
-			route[i] = v
-		}
-	}
-	s.nin = nin
-	for i, v := range s.lock {
-		if i < nout {
-			lock[i] = v
-		}
-	}
-	s.ready = true
-	s.c.store.SetUp(s.dev["Model name"], inputs, outputs, route, lock)
+	u := s.d.build()
+	s.d = nil
+	s.nin = len(u.inputs)
+	s.c.store.SetUp(u.model, u.inputs, u.outputs, u.route, u.lock)
 	s.c.lastSyn.Store(time.Now().UnixNano())
-	s.c.logf("hub: ready, %q %dx%d", s.dev["Model name"], nin, nout)
-}
-
-func maxKey[V any](m map[int]V) int {
-	r := -1
-	for k := range m {
-		r = max(r, k)
-	}
-	return r
+	s.c.logf("hub: ready, %q %dx%d", u.model, len(u.inputs), len(u.outputs))
 }
 
 // command sends text and waits for ACK/NAK; one at a time. A timeout drops
@@ -443,7 +353,7 @@ func (s *session) command(text string) error {
 func (s *session) isReady() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.ready
+	return s.d == nil
 }
 
 func (s *session) keepalive() {
@@ -486,7 +396,6 @@ func (s *session) resyncLoop() {
 		case <-s.done:
 			return
 		case <-t.C:
-		case <-s.c.resync:
 		}
 		if s.isReady() {
 			s.doResync()
