@@ -14,11 +14,12 @@ import (
 	"github.com/sethdotfm/sode-vep/internal/bridge"
 	"github.com/sethdotfm/sode-vep/internal/config"
 	"github.com/sethdotfm/sode-vep/internal/swp08"
+	"github.com/sethdotfm/sode-vep/internal/swp08/swp08test"
 	"github.com/sethdotfm/sode-vep/internal/vhsim"
 )
 
 // End-to-end: fake Videohub -> hub.Client -> state.Store -> bridge.Server ->
-// the real swp08.Client, over loopback TCP.
+// the real swp08test.Client, over loopback TCP.
 
 const e2eProtectDevice = 7
 
@@ -33,10 +34,10 @@ func eventually(t *testing.T, what string, cond func() bool) {
 	}
 }
 
-// swpProbe is a real swp08.Client that records every message it receives.
+// swpProbe is a real swp08test.Client that records every message it receives.
 type swpProbe struct {
 	t    *testing.T
-	c    *swp08.Client
+	c    *swp08test.Client
 	mu   sync.Mutex
 	msgs [][]byte
 	up   atomic.Bool
@@ -45,15 +46,15 @@ type swpProbe struct {
 
 func newSwpProbe(t *testing.T, addr string) *swpProbe {
 	p := &swpProbe{t: t}
-	p.c = swp08.NewClient(addr, swp08.ExtInterrogate(0, 0, 0))
+	p.c = swp08test.NewClient(addr, swp08.ExtInterrogate(0, 0, 0))
 	p.c.OnMsg = func(m []byte) {
 		p.mu.Lock()
 		p.msgs = append(p.msgs, append([]byte(nil), m...))
 		p.mu.Unlock()
 	}
-	p.c.OnState = func(s swp08.State, _ error) {
-		p.up.Store(s == swp08.StateUp)
-		if s == swp08.StateDown {
+	p.c.OnState = func(s swp08test.State, _ error) {
+		p.up.Store(s == swp08test.StateUp)
+		if s == swp08test.StateDown {
 			p.down.Store(true)
 		}
 	}
@@ -95,7 +96,7 @@ func (p *swpProbe) wait(from int, what string, pred func([]byte) bool) []byte {
 
 func (p *swpProbe) send(m []byte) {
 	p.t.Helper()
-	if err := p.c.Send(m, swp08.Why{}); err != nil {
+	if err := p.c.Send(m, swp08test.Why{}); err != nil {
 		p.t.Fatalf("send: %v", err)
 	}
 }

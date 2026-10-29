@@ -10,6 +10,7 @@ import (
 
 	"github.com/sethdotfm/sode-vep/internal/state"
 	"github.com/sethdotfm/sode-vep/internal/swp08"
+	"github.com/sethdotfm/sode-vep/internal/swp08/swp08test"
 )
 
 type fakeRouter struct {
@@ -363,7 +364,7 @@ func TestStartsDown(t *testing.T) {
 func TestWithRealClient(t *testing.T) {
 	r := newRig(t, true)
 	got := make(chan []byte, 16)
-	cl := swp08.NewClient(r.addr, swp08.ExtInterrogate(0, 0, 0))
+	cl := swp08test.NewClient(r.addr, swp08.ExtInterrogate(0, 0, 0))
 	cl.OnMsg = func(m []byte) { got <- m }
 	up := make(chan struct{}, 1)
 	cl.OnUp = func() { up <- struct{}{} }
@@ -375,7 +376,7 @@ func TestWithRealClient(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("client never came up")
 	}
-	cl.Send(swp08.ExtConnect(0, 0, 0, 2), swp08.Why{})
+	cl.Send(swp08.ExtConnect(0, 0, 0, 2), swp08test.Why{})
 	select {
 	case tk := <-r.rt.ch:
 		if tk != [2]int{0, 2} {

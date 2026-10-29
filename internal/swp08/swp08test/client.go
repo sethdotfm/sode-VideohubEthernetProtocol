@@ -1,4 +1,7 @@
-package swp08
+// Package swp08test is a copy of Sode's controller-side SW-P-08 client, kept
+// only to test the bridge against (no product code uses it). Fixes should be
+// mirrored from Sode.
+package swp08test
 
 import (
 	"context"
@@ -8,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/sethdotfm/sode-vep/internal/swp08"
 )
 
 var (
@@ -353,7 +358,7 @@ func (l *lastRx) since(t time.Duration) bool { return time.Duration(l.at.Load())
 func (l *lastRx) idle() time.Duration { return l.now() - time.Duration(l.at.Load()) }
 
 func (c *Client) reader(conn net.Conn, acks chan bool, rx *lastRx) error {
-	var dec Decoder
+	var dec swp08.Decoder
 	buf := make([]byte, 4096)
 	for {
 		n, err := conn.Read(buf)
@@ -365,21 +370,21 @@ func (c *Client) reader(conn net.Conn, acks chan bool, rx *lastRx) error {
 			log.Printf("swp08: rx % X", buf[:n])
 		}
 		var werr error
-		dec.Feed(buf[:n], func(f Frame) {
+		dec.Feed(buf[:n], func(f swp08.Frame) {
 			switch f.Kind {
-			case KindAck, KindNak:
+			case swp08.KindAck, swp08.KindNak:
 				select {
-				case acks <- f.Kind == KindAck:
+				case acks <- f.Kind == swp08.KindAck:
 				default:
 				}
-			case KindBad:
+			case swp08.KindBad:
 				log.Printf("swp08: %v, sending NAK", f.Err)
-				werr = c.write(conn, NakFrame)
-			case KindMsg:
+				werr = c.write(conn, swp08.NakFrame)
+			case swp08.KindMsg:
 				if f.Err != nil && c.Debug {
 					log.Printf("swp08: %v (accepted)", f.Err)
 				}
-				werr = c.write(conn, AckFrame)
+				werr = c.write(conn, swp08.AckFrame)
 				if c.OnMsg != nil {
 					c.OnMsg(f.Msg)
 				}
@@ -448,7 +453,7 @@ func (c *Client) writer(ctx context.Context, conn net.Conn, q chan out, acks cha
 // it tried.
 func (c *Client) transmit(ctx context.Context, conn net.Conn, o out, acks chan bool, rx *lastRx) (heard bool, err error) {
 	m := o.msg
-	frame := Encode(m)
+	frame := swp08.Encode(m)
 	sent := rx.now()
 	e := TxEvent{Msg: m, Why: o.why, At: time.Now(), Result: TxNoAck}
 	defer func() { c.tx(e) }()

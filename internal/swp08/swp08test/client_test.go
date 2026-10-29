@@ -1,4 +1,4 @@
-package swp08
+package swp08test
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/sethdotfm/sode-vep/internal/swp08"
 )
 
 // fakeRouter accepts connections and ACKs only the messages answer picks.
@@ -21,7 +23,7 @@ func fakeRouterAccepted(t *testing.T, answer func(msg []byte) bool) (string, cha
 	t.Helper()
 	return fakeRouterReplies(t, func(m []byte) []byte {
 		if answer(m) {
-			return AckFrame
+			return swp08.AckFrame
 		}
 		return nil
 	})
@@ -49,15 +51,15 @@ func fakeRouterReplies(t *testing.T, reply func(msg []byte) []byte) (string, cha
 			}
 			go func() {
 				defer conn.Close()
-				var d Decoder
+				var d swp08.Decoder
 				buf := make([]byte, 1024)
 				for {
 					n, err := conn.Read(buf)
 					if err != nil {
 						return
 					}
-					d.Feed(buf[:n], func(f Frame) {
-						if f.Kind != KindMsg {
+					d.Feed(buf[:n], func(f swp08.Frame) {
+						if f.Kind != swp08.KindMsg {
 							return
 						}
 						if b := reply(f.Msg); b != nil {
@@ -96,7 +98,7 @@ func (l *stateLog) has(s State) bool {
 // fastClient is a client with short timings, run until the test ends.
 func fastClient(t *testing.T, addr string) (*Client, *stateLog, func()) {
 	t.Helper()
-	c := NewClient(addr, ExtInterrogate(0, 0, 0))
+	c := NewClient(addr, swp08.ExtInterrogate(0, 0, 0))
 	c.ackTimeout, c.probeIdle = 50*time.Millisecond, 300*time.Millisecond
 	var log stateLog
 	c.OnState = log.add
@@ -145,7 +147,7 @@ func TestSilentRouterNeverUp(t *testing.T) {
 
 // A router that ignores one command but answers the probe stays up.
 func TestIgnoredCommandKeepsLink(t *testing.T) {
-	addr := fakeRouter(t, func(m []byte) bool { return m[0] == CmdExtInterrogate })
+	addr := fakeRouter(t, func(m []byte) bool { return m[0] == swp08.CmdExtInterrogate })
 	log := runClient(t, addr, func(c *Client) { c.Send([]byte{0x7F, 0x00}, Why{}) })
 	if !eventually(func() bool { return log.has(StateUp) }) {
 		t.Fatal("router never came up")
@@ -182,7 +184,7 @@ func TestRetargetIsNotDown(t *testing.T) {
 	if !eventually(func() bool { return log.has(StateUp) }) {
 		t.Fatal("router never came up")
 	}
-	c.SetTarget(addr, ExtInterrogate(0, 0, 0))
+	c.SetTarget(addr, swp08.ExtInterrogate(0, 0, 0))
 	time.Sleep(200 * time.Millisecond)
 	if log.has(StateDown) {
 		t.Fatal("retarget reported the router down")
@@ -210,7 +212,7 @@ func TestRetargetMidDialIsNotDown(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("never started dialing")
 	}
-	c.SetTarget(good, ExtInterrogate(0, 0, 0))
+	c.SetTarget(good, swp08.ExtInterrogate(0, 0, 0))
 	if !eventually(func() bool { return log.has(StateUp) }) {
 		t.Fatal("never came up on the new address")
 	}
@@ -233,7 +235,7 @@ func TestDropAfterRetargetInBackoffIsDown(t *testing.T) {
 	log.mu.Lock()
 	log.got = nil
 	log.mu.Unlock()
-	c.SetTarget(good, ExtInterrogate(0, 0, 0))
+	c.SetTarget(good, swp08.ExtInterrogate(0, 0, 0))
 	if !eventually(func() bool { return log.has(StateUp) }) {
 		t.Fatal("never came up on the new address")
 	}
@@ -275,16 +277,16 @@ func TestOnTx(t *testing.T) {
 	naked := false
 	addr, _ := fakeRouterReplies(t, func(m []byte) []byte {
 		switch m[0] {
-		case CmdExtInterrogate:
-			return AckFrame
+		case swp08.CmdExtInterrogate:
+			return swp08.AckFrame
 		case 0x7F: // NAKed once, then ACKed
 			mu.Lock()
 			defer mu.Unlock()
 			if !naked {
 				naked = true
-				return NakFrame
+				return swp08.NakFrame
 			}
-			return AckFrame
+			return swp08.AckFrame
 		}
 		return nil // 0x7E: never answered
 	})
@@ -299,7 +301,7 @@ func TestOnTx(t *testing.T) {
 	if !eventually(func() bool { _, ok := tx.find(0x7E); return ok }) {
 		t.Fatal("no event for the unanswered message")
 	}
-	if e, _ := tx.find(CmdExtInterrogate); e.Why.Reason != "keepalive" || e.Result != TxAck || e.Tries != 1 {
+	if e, _ := tx.find(swp08.CmdExtInterrogate); e.Why.Reason != "keepalive" || e.Result != TxAck || e.Tries != 1 {
 		t.Errorf("probe = %+v, want an ACKed keepalive", e)
 	}
 	if e, _ := tx.find(0x7F); e.Result != TxAck || e.Tries != 2 || e.Why != (Why{Reason: "take", By: "10.0.0.9"}) {
@@ -313,7 +315,7 @@ func TestOnTx(t *testing.T) {
 // Messages still queued when the connection ends are reported dropped,
 // not lost silently.
 func TestOnTxDropped(t *testing.T) {
-	addr := fakeRouter(t, func(m []byte) bool { return m[0] == CmdExtInterrogate })
+	addr := fakeRouter(t, func(m []byte) bool { return m[0] == swp08.CmdExtInterrogate })
 	c, log, start := fastClient(t, addr)
 	c.ackTimeout = time.Second // the unanswered message holds the writer
 	var tx txLog
@@ -325,7 +327,7 @@ func TestOnTxDropped(t *testing.T) {
 	c.Send([]byte{0x7E}, Why{})
 	c.Send([]byte{0x7D}, Why{Reason: "take"})
 	time.Sleep(100 * time.Millisecond) // 0x7E written, waiting for its ACK
-	c.SetTarget(addr, ExtInterrogate(0, 0, 0))
+	c.SetTarget(addr, swp08.ExtInterrogate(0, 0, 0))
 	if !eventually(func() bool { _, ok := tx.find(0x7D); return ok }) {
 		t.Fatal("no event for the queued message")
 	}
