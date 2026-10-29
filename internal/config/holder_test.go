@@ -11,6 +11,7 @@ import (
 func nolog(string, ...any) {}
 
 func TestOpenHolderSeedsFromEnv(t *testing.T) {
+	cleanEnv(t)
 	t.Setenv("VEP_HUB", " 10.0.0.5 ")
 	t.Setenv("VEP_PROTECT_DEVICE", "7")
 	p := filepath.Join(t.TempDir(), "config.yaml")
@@ -31,6 +32,7 @@ func TestOpenHolderSeedsFromEnv(t *testing.T) {
 }
 
 func TestOpenHolderNoPath(t *testing.T) {
+	cleanEnv(t)
 	t.Setenv("VEP_HUB", "h")
 	h, err := OpenHolder("", nolog)
 	if err != nil || h.Get().Hub != "h" {
@@ -42,6 +44,7 @@ func TestOpenHolderNoPath(t *testing.T) {
 }
 
 func TestOpenHolderFileWinsOverEnv(t *testing.T) {
+	cleanEnv(t)
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(p, []byte("hub: fromfile\nprotectDevice: 3\nresyncSeconds: 30\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -57,6 +60,7 @@ func TestOpenHolderFileWinsOverEnv(t *testing.T) {
 }
 
 func TestOpenHolderBadFile(t *testing.T) {
+	cleanEnv(t)
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	os.WriteFile(p, []byte("nope: 1\n"), 0o644)
 	if _, err := OpenHolder(p, nolog); err == nil {
@@ -65,6 +69,7 @@ func TestOpenHolderBadFile(t *testing.T) {
 }
 
 func TestOldDebugFileLoadsAndIsNotRewritten(t *testing.T) {
+	cleanEnv(t)
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	os.WriteFile(p, []byte("hub: a\nprotectDevice: 1\nresyncSeconds: 60\ndebug: true\n"), 0o644)
 	h, err := OpenHolder(p, nolog)
@@ -84,6 +89,7 @@ func TestOldDebugFileLoadsAndIsNotRewritten(t *testing.T) {
 }
 
 func TestSetInvalidLeavesEverythingAlone(t *testing.T) {
+	cleanEnv(t)
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	os.WriteFile(p, []byte("hub: a\nprotectDevice: 1\nresyncSeconds: 60\n"), 0o644)
 	before, _ := os.ReadFile(p)
@@ -103,6 +109,7 @@ func TestSetInvalidLeavesEverythingAlone(t *testing.T) {
 }
 
 func TestSetSaveFailureKeepsOld(t *testing.T) {
+	cleanEnv(t)
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.yaml")
 	os.WriteFile(p, []byte("hub: a\nprotectDevice: 1\nresyncSeconds: 60\n"), 0o644)
@@ -122,6 +129,7 @@ func TestSetSaveFailureKeepsOld(t *testing.T) {
 }
 
 func TestSetReportsHubChangeOnly(t *testing.T) {
+	cleanEnv(t)
 	h, _ := OpenHolder("", nolog)
 	c := Config{Hub: "a", ProtectDevice: 1, ResyncSeconds: 60}
 	if changed, err := h.Set(c); err != nil || !changed {
@@ -137,6 +145,7 @@ func TestSetReportsHubChangeOnly(t *testing.T) {
 }
 
 func TestHolderConcurrent(t *testing.T) {
+	cleanEnv(t)
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	h, err := OpenHolder(p, nolog)
 	if err != nil {
@@ -149,7 +158,9 @@ func TestHolderConcurrent(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < 50; i++ {
 				if g%2 == 0 {
-					h.Set(Config{Hub: "h", ProtectDevice: g, ResyncSeconds: 60 + i})
+					if _, err := h.Set(Config{Hub: "h", ProtectDevice: g, ResyncSeconds: 60 + i}); err != nil {
+						t.Error(err)
+					}
 				} else {
 					_ = h.Get()
 				}
@@ -157,7 +168,21 @@ func TestHolderConcurrent(t *testing.T) {
 		}(g)
 	}
 	wg.Wait()
-	if _, exists, err := Load(p); err != nil || !exists {
+	// Saves are serialised with the swap, so memory always equals the last file written.
+	onDisk, exists, err := Load(p)
+	if err != nil || !exists {
 		t.Fatalf("file: %v %v", exists, err)
+	}
+	if got := h.Get(); got != onDisk {
+		t.Fatalf("memory %+v differs from file %+v", got, onDisk)
+	}
+}
+
+// cleanEnv blanks every VEP_* seed variable (FromEnv treats "" as unset) so a
+// developer's own environment can't change what a test seeds.
+func cleanEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range []string{"VEP_HUB", "VEP_PROTECT_DEVICE", "VEP_RESYNC_SECONDS", "VEP_DEBUG"} {
+		t.Setenv(k, "")
 	}
 }
