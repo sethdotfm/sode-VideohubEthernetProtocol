@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -45,13 +46,14 @@ func main() {
 		os.Exit(0)
 	}
 
+	debug, _ := strconv.ParseBool(os.Getenv("VEP_DEBUG")) // wire log: env only, not a setting
 	h, err := config.OpenHolder(os.Getenv("VEP_CONFIG"), log.Printf)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	store := state.New()
-	hc := hub.New(store, h.Get, log.Printf, config.DebugFromEnv())
+	hc := hub.New(store, h.Get, log.Printf, debug)
 	br := bridge.New(store, hc, func() int { return h.Get().ProtectDevice }, log.Printf)
 
 	started := time.Now()

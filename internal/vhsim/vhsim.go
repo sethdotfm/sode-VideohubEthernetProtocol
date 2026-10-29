@@ -63,7 +63,7 @@ type Server struct {
 	ext     *client // the "other client" that holds startup locks
 }
 
-// New builds a Server; call Start or Serve to listen.
+// New builds a Server; call Start to listen.
 func New(o Options) *Server {
 	nin, nout := o.Inputs, o.Outputs
 	s := &Server{opt: o, model: o.Model, clients: map[*client]bool{}, ext: &client{}}
