@@ -2,7 +2,11 @@
 // and the SW-P-08 server and web page (readers and subscribers).
 package state
 
-import "sync"
+import (
+	"maps"
+	"slices"
+	"sync"
+)
 
 // Lock states, as the Videohub reports them: U unlocked, O locked by this
 // client, L locked by another client.
@@ -28,16 +32,23 @@ const (
 	EvUp     EventKind = iota // prelude complete; Snapshot is valid
 	EvDown                    // hub gone; cache is cleared
 	EvRoute                   // Out now routed from In
-	EvLabels                  // some label changed; Input says which side
+	EvLabels                  // one label changed; Input says which side
 	EvLock                    // Out's lock changed
 	EvResync                  // subscriber was too slow and lost events: re-read Snapshot
 )
 
+// Event fields used per kind:
+//
+//	EvRoute:  Out (output) and In (the input now routed to it)
+//	EvLock:   Out (output)
+//	EvLabels: Out (index of the changed label, not necessarily an output) and
+//	          Input (true if it is an input's label, false for an output's)
+//	others:   none
 type Event struct {
 	Kind  EventKind
-	Out   int  // output index (EvRoute, EvLock) or label index (EvLabels)
-	In    int  // input index (EvRoute)
-	Input bool // EvLabels: true if the label is an input's
+	Out   int
+	In    int
+	Input bool
 }
 
 // Snapshot is a copy; callers may keep and modify it.
@@ -197,15 +208,4 @@ func (s *Store) ApplyLabels(inputs, outputs map[int]string) []Event {
 	return evs
 }
 
-func sortedKeys[V any](m map[int]V) []int {
-	k := make([]int, 0, len(m))
-	for i := range m {
-		k = append(k, i)
-	}
-	for i := 1; i < len(k); i++ {
-		for j := i; j > 0 && k[j-1] > k[j]; j-- {
-			k[j-1], k[j] = k[j], k[j-1]
-		}
-	}
-	return k
-}
+func sortedKeys[V any](m map[int]V) []int { return slices.Sorted(maps.Keys(m)) }

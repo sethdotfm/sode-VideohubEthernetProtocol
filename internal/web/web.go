@@ -53,7 +53,6 @@ type stateJSON struct {
 	Started    time.Time `json:"started"`
 	LastResync time.Time `json:"lastResync"`
 	Version    string    `json:"version"`
-	Now        time.Time `json:"now"`
 }
 
 type handler struct {
@@ -87,22 +86,15 @@ func (h *handler) state() stateJSON {
 	}
 	return stateJSON{
 		Up: s.Up, Model: s.Model, Hub: in.HubAddr,
-		Inputs: nonNil(s.Inputs), Outputs: nonNil(s.Outputs), Route: nonNilInts(s.Route), Lock: lock,
+		Inputs: nonNil(s.Inputs), Outputs: nonNil(s.Outputs), Route: nonNil(s.Route), Lock: lock,
 		Clients: h.Clients(), Listen: in.Listen, Started: in.Started, LastResync: in.LastResync,
-		Version: in.Version, Now: time.Now(),
+		Version: in.Version,
 	}
 }
 
-func nonNil(a []string) []string {
+func nonNil[T any](a []T) []T {
 	if a == nil {
-		return []string{}
-	}
-	return a
-}
-
-func nonNilInts(a []int) []int {
-	if a == nil {
-		return []int{}
+		return []T{}
 	}
 	return a
 }
@@ -167,15 +159,11 @@ func (h *handler) events(w http.ResponseWriter, r *http.Request) {
 
 	var last []byte
 	send := func() bool {
-		st := h.state()
-		st.Now = time.Time{} // so an idle state compares equal
-		cmp, _ := json.Marshal(st)
-		st.Now = time.Now()
-		b, _ := json.Marshal(st)
-		if bytes.Equal(cmp, last) {
+		b, _ := json.Marshal(h.state())
+		if bytes.Equal(b, last) {
 			return true
 		}
-		last = cmp
+		last = b
 		rc.SetWriteDeadline(time.Now().Add(writeTimeout))
 		if _, err := fmt.Fprintf(w, "event: state\ndata: %s\n\n", b); err != nil {
 			return false

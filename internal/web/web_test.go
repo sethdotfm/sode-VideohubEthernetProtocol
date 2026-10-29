@@ -276,3 +276,50 @@ func TestEventsCleanup(t *testing.T) {
 	// The store has no subscribers left: a change must not block or panic.
 	f.store.ApplyRoutes(map[int]int{0: 1})
 }
+
+func TestStateHasNoNow(t *testing.T) {
+	f := newFixture(t)
+	r, err := http.Get(f.srv.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Body.Close()
+	var m map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m["now"]; ok {
+		t.Error("state JSON has a now key")
+	}
+}
+
+func TestEventsIdleDoesNotResend(t *testing.T) {
+	old1, old2 := heartbeat, refreshAll
+	heartbeat, refreshAll = time.Hour, 20*time.Millisecond
+	defer func() { heartbeat, refreshAll = old1, old2 }()
+	f := newFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, f.srv.URL+"/events", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	sc := bufio.NewScanner(resp.Body)
+	readEvent(t, sc)
+	extra := make(chan struct{}, 1)
+	go func() {
+		for sc.Scan() {
+			if strings.HasPrefix(sc.Text(), "data: ") {
+				extra <- struct{}{}
+				return
+			}
+		}
+	}()
+	select {
+	case <-extra:
+		t.Fatal("unchanged state was re-sent")
+	case <-time.After(300 * time.Millisecond): // ~15 refresh ticks
+	}
+}

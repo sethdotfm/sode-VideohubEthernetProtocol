@@ -4,7 +4,7 @@ Guidance for coding agents in this repo. (`CLAUDE.md` is only an `@AGENTS.md` im
 
 # sode-vep — notes
 
-Bridge that makes one Blackmagic Videohub look like an SW-P-08 router to [Sode](https://github.com/sethdotfm/sode). It polls the hub's names, routes and locks, serves them to Sode as SW-P-08, passes Sode's takes on to the hub, and shows status on a one-page GUI on :8081. Full design: `docs/superpowers/plans/2026-10-28-videohub-bridge.md`. User-facing settings: README.md.
+Bridge that makes one Blackmagic Videohub look like an SW-P-08 router to [Sode](https://github.com/sethdotfm/sode). It polls the hub's names, routes and locks, serves them to Sode as SW-P-08, passes Sode's takes on to the hub, and shows status on a one-page GUI on :8081. Protocol notes: `docs/videohub-protocol.md`. User-facing settings: README.md.
 
 ## Commands
 
