@@ -153,3 +153,21 @@ func TestProtectBuildersRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestNameLen(t *testing.T) {
+	for code, want := range map[byte]int{0: 4, 1: 8, 2: 12, 3: 16, 4: 0} {
+		if got := NameLen(code); got != want {
+			t.Errorf("NameLen(%d) = %d, want %d", code, got, want)
+		}
+		if want > 0 {
+			if c, err := NameLenCode(want); err != nil || c != code {
+				t.Errorf("NameLenCode(%d) = %d, %v", want, c, err)
+			}
+		}
+	}
+	for code, want := range map[byte]int{0: 32, 1: 16, 2: 10, 3: 8, 9: 8} {
+		if got := NamesPerMsg(code); got != want {
+			t.Errorf("NamesPerMsg(%d) = %d, want %d", code, got, want)
+		}
+	}
+}

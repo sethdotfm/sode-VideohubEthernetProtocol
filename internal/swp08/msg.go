@@ -51,18 +51,16 @@ func NameLenCode(chars int) (byte, error) {
 	return 0, fmt.Errorf("swp08: name length %d not one of 4, 8, 12, 16", chars)
 }
 
-// NamesPerMsg is how many names of a given length fit one response.
+// NameLen is the name length in characters for a length code (0 if unknown).
+func NameLen(code byte) int { return nameLens[code] }
+
+// NamesPerMsg is how many names of a given length fit one response
+// (128 bytes of names; 8 for an unknown code).
 func NamesPerMsg(code byte) int {
-	switch code {
-	case 0:
-		return 32
-	case 1:
-		return 16
-	case 2:
-		return 10
-	default:
-		return 8
+	if n := nameLens[code]; n > 0 {
+		return 128 / n
 	}
+	return 8
 }
 
 type Crosspoint struct {

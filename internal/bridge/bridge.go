@@ -35,7 +35,6 @@ type Server struct {
 
 	mu      sync.Mutex
 	clients map[*client]struct{}
-	down    bool
 	n       atomic.Int32
 }
 
@@ -47,7 +46,7 @@ func New(store *state.Store, router state.Router, protectDevice func() int, logf
 		protectDevice = func() int { return 0 }
 	}
 	return &Server{store: store, router: router, protectDevice: protectDevice, logf: logf,
-		takes: make(chan take, 256), clients: map[*client]struct{}{}, down: true}
+		takes: make(chan take, 256), clients: map[*client]struct{}{}}
 }
 
 // Clients is how many SW-P-08 clients are connected now.
@@ -103,9 +102,6 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	defer stop()
 	evs, cancel := s.store.Subscribe()
 	defer cancel()
-	s.mu.Lock()
-	s.down = !s.store.Snapshot().Up
-	s.mu.Unlock()
 
 	go func() {
 		<-ctx.Done()
@@ -117,22 +113,22 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			s.closeAll(true)
+			s.closeAll()
 			if ctx.Err() != nil {
 				return nil
 			}
 			return err
 		}
 		s.mu.Lock()
-		down := s.down
+		up := s.store.Snapshot().Up
 		var c *client
-		if !down {
+		if up {
 			c = &client{conn: conn, out: make(chan []byte, queueLen), done: make(chan struct{})}
 			s.clients[c] = struct{}{}
 			s.n.Add(1)
 		}
 		s.mu.Unlock()
-		if down {
+		if !up {
 			conn.Close()
 			continue
 		}
@@ -141,11 +137,11 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	}
 }
 
-func (s *Server) closeAll(shutdown bool) {
+// closeAll closes every session (Sode reconnects and re-polls) and forgets
+// queued connects: Sode timed them out long ago, and they must not reach a
+// hub that has since come back.
+func (s *Server) closeAll() {
 	s.mu.Lock()
-	if shutdown {
-		s.down = true
-	}
 	var all []*client
 	for c := range s.clients {
 		all = append(all, c)
@@ -154,25 +150,6 @@ func (s *Server) closeAll(shutdown bool) {
 	for _, c := range all {
 		c.close()
 	}
-}
-
-func (s *Server) setDown(down bool) {
-	s.mu.Lock()
-	changed := s.down != down
-	s.down = down
-	s.mu.Unlock()
-	if changed {
-		s.logf("hub %s: SW-P-08 %s", map[bool]string{true: "down", false: "up"}[down],
-			map[bool]string{true: "sessions closed, refusing clients", false: "accepting clients"}[down])
-	}
-	if down {
-		s.closeAll(false)
-		s.drainTakes()
-	}
-}
-
-// drainTakes forgets queued connects: Sode timed them out long ago.
-func (s *Server) drainTakes() {
 	for {
 		select {
 		case <-s.takes:
@@ -206,11 +183,13 @@ func (s *Server) events(ctx context.Context, evs <-chan state.Event) {
 		}
 		switch ev.Kind {
 		case state.EvUp:
-			s.setDown(false)
+			s.logf("hub up: accepting SW-P-08 clients")
+			s.closeAll()
 		case state.EvDown:
-			s.setDown(true)
+			s.logf("hub down: closing SW-P-08 sessions, refusing clients")
+			s.closeAll()
 		case state.EvResync:
-			s.setDown(!s.store.Snapshot().Up)
+			s.closeAll() // events were lost: make Sode re-poll everything
 		case state.EvRoute:
 			src := ev.In
 			if src < 0 {
