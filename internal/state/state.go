@@ -159,7 +159,7 @@ func (s *Store) ApplyRoutes(m map[int]int) []Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var evs []Event
-	for _, out := range sortedKeys(m) {
+	for _, out := range slices.Sorted(maps.Keys(m)) {
 		in := m[out]
 		if out < 0 || out >= len(s.snap.Route) || s.snap.Route[out] == in {
 			continue
@@ -176,7 +176,7 @@ func (s *Store) ApplyLocks(m map[int]byte) []Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var evs []Event
-	for _, out := range sortedKeys(m) {
+	for _, out := range slices.Sorted(maps.Keys(m)) {
 		l := m[out]
 		if out < 0 || out >= len(s.snap.Lock) || s.snap.Lock[out] == l {
 			continue
@@ -194,7 +194,7 @@ func (s *Store) ApplyLabels(inputs, outputs map[int]string) []Event {
 	defer s.mu.Unlock()
 	var evs []Event
 	set := func(dst []string, m map[int]string, input bool) {
-		for _, i := range sortedKeys(m) {
+		for _, i := range slices.Sorted(maps.Keys(m)) {
 			if i < 0 || i >= len(dst) || dst[i] == m[i] {
 				continue
 			}
@@ -207,5 +207,3 @@ func (s *Store) ApplyLabels(inputs, outputs map[int]string) []Event {
 	s.publish(evs...)
 	return evs
 }
-
-func sortedKeys[V any](m map[int]V) []int { return slices.Sorted(maps.Keys(m)) }
