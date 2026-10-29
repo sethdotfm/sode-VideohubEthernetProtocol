@@ -197,7 +197,7 @@ func newE2E(t *testing.T, nin, nout int, prep func(*vhsim.Server)) *e2e {
 	r := start(t, h, nil)
 	cfg := config.Defaults()
 	cfg.ProtectDevice = e2eProtectDevice
-	srv := bridge.New(r.st, r.c, func() int { return cfg.ProtectDevice }, t.Logf)
+	srv := bridge.New(r.st, r.c, func() int { return cfg.ProtectDevice }, testLogf(t))
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

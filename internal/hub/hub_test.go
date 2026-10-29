@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ func start(t *testing.T, h *vhsim.Server, tune func(*Client)) *rig {
 	st := state.New()
 	cfg := config.Defaults()
 	cfg.Hub = h.Addr()
-	c := New(st, func() config.Config { return cfg }, t.Logf, false)
+	c := New(st, func() config.Config { return cfg }, testLogf(t), false)
 	c.backoffMin, c.backoffMax = 20*time.Millisecond, 50*time.Millisecond
 	c.quiet = 80 * time.Millisecond
 	c.cmdTimeout = time.Second
@@ -232,7 +233,7 @@ func TestReconfigureEmptyHubIdlesDown(t *testing.T) {
 	var mu = make(chan struct{}, 1)
 	mu <- struct{}{}
 	get := func() config.Config { <-mu; defer func() { mu <- struct{}{} }(); return cfg }
-	c := New(st, get, t.Logf, false)
+	c := New(st, get, testLogf(t), false)
 	c.backoffMin, c.backoffMax, c.quiet = 20*time.Millisecond, 50*time.Millisecond, 50*time.Millisecond
 	ev, _ := st.Subscribe()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -268,4 +269,20 @@ func TestReconfigureEmptyHubIdlesDown(t *testing.T) {
 	mu <- struct{}{}
 	c.Reconfigure()
 	wait(state.EvUp)
+}
+
+// testLogf is t.Logf that goes quiet once the test is over: server goroutines
+// (a bridge session noticing its client left, a hub session closing) can
+// outlive the test and must not log into a finished *testing.T.
+func testLogf(t *testing.T) func(string, ...any) {
+	var mu sync.Mutex
+	over := false
+	t.Cleanup(func() { mu.Lock(); over = true; mu.Unlock() })
+	return func(format string, a ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !over {
+			t.Logf(format, a...)
+		}
+	}
 }
