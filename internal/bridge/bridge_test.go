@@ -510,6 +510,10 @@ func TestResyncDisconnectsClientButUpDoesNot(t *testing.T) {
 	if !isClosed(c, 2*time.Second) {
 		t.Fatal("EvResync did not disconnect the client")
 	}
+	deadline := time.Now().Add(2 * time.Second)
+	for len(s.takes) != 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
 	if len(s.takes) != 0 {
 		t.Fatal("EvResync left takes queued")
 	}
