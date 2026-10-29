@@ -43,7 +43,7 @@ Without `VEP_CONFIG`, config comes from `VEP_*` env and is not persisted. The we
   - Hub down → close every session and refuse new ones until the hub's initial dump is complete again. Sode reconnects and re-polls on its own.
 - `internal/config`: `Defaults` → `FromEnv` (seed) → `Normalize`/`Validate`; YAML load/save.
 - `internal/web` + `web/`: `/`, `/healthz`, `/api/state`, `/api/config`, `/events` (SSE, no websocket dep).
-- `cmd/vhsim`: fake Videohub; **must keep mimicking real hardware quirks** (record them below as they are verified).
+- `internal/vhsim` (run by `cmd/vhsim`, also the hub tests' fake): the one fake Videohub; **must keep mimicking real hardware quirks** (record them below as they are verified).
 
 ## SW-P-08 facts Sode relies on (verified against a real Ultrix)
 

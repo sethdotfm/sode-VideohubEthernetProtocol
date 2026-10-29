@@ -14,6 +14,7 @@ import (
 	"github.com/sethdotfm/sode-vep/internal/bridge"
 	"github.com/sethdotfm/sode-vep/internal/config"
 	"github.com/sethdotfm/sode-vep/internal/swp08"
+	"github.com/sethdotfm/sode-vep/internal/vhsim"
 )
 
 // End-to-end: fake Videohub -> hub.Client -> state.Store -> bridge.Server ->
@@ -134,8 +135,8 @@ type rawHub struct {
 	lines chan string
 }
 
-func newRawHub(t *testing.T, h *fakeHub) *rawHub {
-	conn, err := net.Dial("tcp", h.addr())
+func newRawHub(t *testing.T, h *vhsim.Server) *rawHub {
+	conn, err := net.Dial("tcp", h.Addr())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,15 +181,15 @@ func (r *rawHub) do(cmd string) {
 
 type e2e struct {
 	t    *testing.T
-	h    *fakeHub
+	h    *vhsim.Server
 	rig  *rig
 	addr string // bridge
 }
 
 // newE2E wires hub -> store -> bridge; prep may configure the fake hub first.
-func newE2E(t *testing.T, nin, nout int, prep func(*fakeHub)) *e2e {
+func newE2E(t *testing.T, nin, nout int, prep func(*vhsim.Server)) *e2e {
 	t.Helper()
-	h := newFakeHub(t, nin, nout)
+	h := newHub(t, nin, nout)
 	if prep != nil {
 		prep(h)
 	}
@@ -221,7 +222,7 @@ func TestE2E(t *testing.T) {
 		if got := e.rig.st.Snapshot().Route[2]; got != 3 {
 			t.Errorf("store route = %d", got)
 		}
-		if got := e.h.routeOf(2); got != 3 {
+		if got := e.h.Route(2); got != 3 {
 			t.Errorf("hub route = %d", got)
 		}
 	})
@@ -229,11 +230,11 @@ func TestE2E(t *testing.T) {
 	t.Run("noop take", func(t *testing.T) {
 		e := newE2E(t, 4, 6, nil)
 		p := newSwpProbe(t, e.addr)
-		cur := e.h.routeOf(2) // 2
+		cur := e.h.Route(2) // 2
 		from := p.mark()
 		p.send(swp08.ExtConnect(0, 0, 2, cur))
 		// The hub did get the request, so the silence below means something.
-		eventually(t, "hub saw the take", func() bool { return slices.Contains(e.h.routeRequests(), 2) })
+		eventually(t, "hub saw the take", func() bool { return slices.Contains(e.h.RouteRequests(), 2) })
 		time.Sleep(400 * time.Millisecond)
 		if m := p.since(from); len(m) != 0 {
 			t.Fatalf("no-op take produced %x", m)
@@ -260,7 +261,7 @@ func TestE2E(t *testing.T) {
 	})
 
 	t.Run("locked at startup", func(t *testing.T) {
-		e := newE2E(t, 4, 6, func(h *fakeHub) { h.lockExternally(1) })
+		e := newE2E(t, 4, 6, func(h *vhsim.Server) { h.LockExternal(1) })
 		if l := e.rig.st.Snapshot().Lock[1]; l != 'L' {
 			t.Fatalf("store lock = %c, want L", l)
 		}
@@ -284,17 +285,17 @@ func TestE2E(t *testing.T) {
 		// A connect to the locked output goes nowhere. Takes are queued in
 		// order, so once a control take to output 0 has reached the hub the
 		// earlier one has been dealt with.
-		before := e.h.routeOf(1)
+		before := e.h.Route(1)
 		from = p.mark()
 		p.send(swp08.ExtConnect(0, 0, 1, 3))
 		p.send(swp08.ExtConnect(0, 0, 0, 2))
 		if x := p.xp(from, swp08.CmdExtConnected, 0); x.Src != 2 {
 			t.Fatalf("control 0x84 = %+v", x)
 		}
-		if reqs := e.h.routeRequests(); !reflect.DeepEqual(reqs, []int{0}) {
+		if reqs := e.h.RouteRequests(); !reflect.DeepEqual(reqs, []int{0}) {
 			t.Errorf("hub routing requests = %v, want only the control [0]", reqs)
 		}
-		if got := e.h.routeOf(1); got != before {
+		if got := e.h.Route(1); got != before {
 			t.Errorf("locked output rerouted %d -> %d", before, got)
 		}
 	})
@@ -320,8 +321,7 @@ func TestE2E(t *testing.T) {
 	})
 
 	t.Run("fake hub per-connection lock view", func(t *testing.T) {
-		h := newFakeHub(t, 2, 2)
-		h.serve()
+		h := newHub(t, 2, 2)
 		a, b := newRawHub(t, h), newRawHub(t, h)
 		a.do("VIDEO OUTPUT LOCKS:\n0 O\n\n")
 		b.waitLine("0 L")
@@ -330,15 +330,15 @@ func TestE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 		b.waitLine("NAK")
-		if reqs := h.routeRequests(); !reflect.DeepEqual(reqs, []int{0}) || h.routeOf(0) != 0 {
-			t.Errorf("reqs %v route %d", reqs, h.routeOf(0))
+		if reqs := h.RouteRequests(); !reflect.DeepEqual(reqs, []int{0}) || h.Route(0) != 0 {
+			t.Errorf("reqs %v route %d", reqs, h.Route(0))
 		}
 	})
 
 	t.Run("hub drop", func(t *testing.T) {
 		e := newE2E(t, 4, 6, nil)
 		p := newSwpProbe(t, e.addr)
-		e.h.stop()
+		e.h.Stop()
 		eventually(t, "swp08 session closed", p.down.Load)
 		eventually(t, "store down", func() bool { return !e.rig.st.Snapshot().Up })
 		// New connections are accepted and closed at once.
@@ -353,7 +353,7 @@ func TestE2E(t *testing.T) {
 			ne, timeout := err.(net.Error)
 			return err != nil && !(timeout && ne.Timeout())
 		})
-		if err := e.h.restart(); err != nil {
+		if err := e.h.Restart(); err != nil {
 			t.Fatal(err)
 		}
 		eventually(t, "store up again", func() bool { return e.rig.st.Snapshot().Up })
@@ -376,10 +376,10 @@ func TestE2E(t *testing.T) {
 	})
 
 	t.Run("names", func(t *testing.T) {
-		e := newE2E(t, 3, 3, func(h *fakeHub) {
-			h.inputs[0] = "Café Ünïcode long"
-			h.inputs[1] = "日本X"
-			h.outputs[2] = "Schön Monitor 12345"
+		e := newE2E(t, 3, 3, func(h *vhsim.Server) {
+			h.SetInputLabel(0, "Café Ünïcode long")
+			h.SetInputLabel(1, "日本X")
+			h.SetOutputLabel(2, "Schön Monitor 12345")
 		})
 		p := newSwpProbe(t, e.addr)
 		names := func(req []byte, cmd byte) []string {
