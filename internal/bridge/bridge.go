@@ -183,8 +183,9 @@ func (s *Server) events(ctx context.Context, evs <-chan state.Event) {
 		}
 		switch ev.Kind {
 		case state.EvUp:
+			// Nothing to close: the hub always goes down (EvDown) before it
+			// comes back, and a client accepted since SetUp is a fresh one.
 			s.logf("hub up: accepting SW-P-08 clients")
-			s.closeAll()
 		case state.EvDown:
 			s.logf("hub down: closing SW-P-08 sessions, refusing clients")
 			s.closeAll()

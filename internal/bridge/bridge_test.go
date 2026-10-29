@@ -466,3 +466,51 @@ func TestQueuedTakesDroppedWhenHubGoesDownAndComesBack(t *testing.T) {
 		t.Fatalf("%d takes still queued after the hub went down", n)
 	}
 }
+
+// eventsRig runs only the event loop on a synthetic channel, with one
+// connected client registered.
+func eventsRig(t *testing.T) (*Server, chan state.Event, *client) {
+	t.Helper()
+	st := state.New()
+	st.SetUp("t", []string{"a"}, make([]string, 2), nil, nil)
+	s := New(st, &slowRouter{}, nil, nil)
+	evs := make(chan state.Event, 4)
+	ctx, stop := context.WithCancel(context.Background())
+	t.Cleanup(stop)
+	go s.events(ctx, evs)
+	a, b := net.Pipe()
+	t.Cleanup(func() { b.Close() })
+	c := &client{conn: a, out: make(chan []byte, 1), done: make(chan struct{})}
+	s.mu.Lock()
+	s.clients[c] = struct{}{}
+	s.mu.Unlock()
+	return s, evs, c
+}
+
+func isClosed(c *client, wait time.Duration) bool {
+	select {
+	case <-c.done:
+		return true
+	case <-time.After(wait):
+		return false
+	}
+}
+
+func TestResyncDisconnectsClientButUpDoesNot(t *testing.T) {
+	s, evs, c := eventsRig(t)
+	s.takes <- take{0, 0}
+	evs <- state.Event{Kind: state.EvUp}
+	if isClosed(c, 200*time.Millisecond) {
+		t.Fatal("EvUp disconnected a connected client")
+	}
+	if len(s.takes) != 1 {
+		t.Fatal("EvUp drained queued takes")
+	}
+	evs <- state.Event{Kind: state.EvResync}
+	if !isClosed(c, 2*time.Second) {
+		t.Fatal("EvResync did not disconnect the client")
+	}
+	if len(s.takes) != 0 {
+		t.Fatal("EvResync left takes queued")
+	}
+}
