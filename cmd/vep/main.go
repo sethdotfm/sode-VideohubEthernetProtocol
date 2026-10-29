@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -30,38 +29,6 @@ func env(k, def string) string {
 	return def
 }
 
-// loadConfig reads the YAML file. On first start (no file) it is created
-// from the VEP_* seed variables; after that the file wins.
-func loadConfig(path string) config.Config {
-	if path != "" {
-		c, exists, err := config.Load(path)
-		if err != nil {
-			log.Fatalf("config: %v", err)
-		}
-		if exists {
-			log.Printf("config: loaded %s (VEP_* seed variables are ignored once it exists)", path)
-			return c
-		}
-	}
-	c, err := config.FromEnv(config.Defaults())
-	if err != nil {
-		log.Fatalf("config: %v", err)
-	}
-	c.Normalize()
-	if err := c.Validate(); err != nil {
-		log.Fatalf("config from environment: %v", err)
-	}
-	if path == "" {
-		log.Printf("config: VEP_CONFIG not set; settings changes will not survive a restart")
-		return c
-	}
-	if err := config.Save(path, c); err != nil {
-		log.Fatalf("config: writing %s: %v", path, err)
-	}
-	log.Printf("config: created %s from environment", path)
-	return c
-}
-
 func main() {
 	health := flag.Bool("healthcheck", false, "probe the local /healthz and exit")
 	flag.Parse()
@@ -78,45 +45,29 @@ func main() {
 		os.Exit(0)
 	}
 
-	cfgPath := os.Getenv("VEP_CONFIG")
-	var mu sync.RWMutex
-	cfg := loadConfig(cfgPath)
-	getCfg := func() config.Config { mu.RLock(); defer mu.RUnlock(); return cfg }
+	h, err := config.OpenHolder(os.Getenv("VEP_CONFIG"), log.Printf)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	store := state.New()
-	hc := hub.New(store, getCfg, log.Printf, config.DebugFromEnv())
-	br := bridge.New(store, hc, func() int { return getCfg().ProtectDevice }, log.Printf)
-
-	var saveMu sync.Mutex // one save at a time; disk I/O stays out of mu
-	setCfg := func(n config.Config) error {
-		if err := n.Validate(); err != nil {
-			return err
-		}
-		saveMu.Lock()
-		defer saveMu.Unlock()
-		if cfgPath != "" {
-			if err := config.Save(cfgPath, n); err != nil {
-				return err
-			}
-		}
-		mu.Lock()
-		old := cfg
-		cfg = n
-		mu.Unlock()
-		if old.Hub != n.Hub {
-			hc.Reconfigure()
-		}
-		return nil
-	}
+	hc := hub.New(store, h.Get, log.Printf, config.DebugFromEnv())
+	br := bridge.New(store, hc, func() int { return h.Get().ProtectDevice }, log.Printf)
 
 	started := time.Now()
 	ui := web.New(web.Deps{
-		Store:     store,
-		Config:    getCfg,
-		SetConfig: setCfg,
-		Clients:   br.Clients,
+		Store:  store,
+		Config: h.Get,
+		SetConfig: func(n config.Config) error {
+			hubChanged, err := h.Set(n)
+			if hubChanged {
+				hc.Reconfigure()
+			}
+			return err
+		},
+		Clients: br.Clients,
 		Info: func() web.Info {
-			return web.Info{Listen: swAddr, Started: started, Version: version.Label(), LastResync: hc.LastResync(), HubAddr: getCfg().HubAddr()}
+			return web.Info{Listen: swAddr, Started: started, Version: version.Label(), LastResync: hc.LastResync(), HubAddr: h.Get().HubAddr()}
 		},
 	})
 
@@ -144,7 +95,7 @@ func main() {
 		defer cancel()
 		srv.Shutdown(sctx)
 	}()
-	log.Printf("vep %s: gui on %s, swp08 on %s, hub %q", version.Label(), httpAddr, swAddr, getCfg().HubAddr())
+	log.Printf("vep %s: gui on %s, swp08 on %s, hub %q", version.Label(), httpAddr, swAddr, h.Get().HubAddr())
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
