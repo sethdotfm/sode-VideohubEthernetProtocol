@@ -69,22 +69,13 @@ func TestOldFileWithDebugStillLoadsAndIsNotSaved(t *testing.T) {
 	if err != nil || !exists || c.Hub != "10.0.0.9" {
 		t.Fatalf("%+v %v %v", c, exists, err)
 	}
-	c.Debug = false
+	if c.Debug {
+		t.Fatal("Load kept the dropped debug setting")
+	}
 	if err := Save(p, c); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(p); strings.Contains(string(b), "debug") {
 		t.Fatalf("debug was saved: %s", b)
-	}
-}
-
-func TestDebugFromEnv(t *testing.T) {
-	t.Setenv("VEP_DEBUG", "true")
-	if !DebugFromEnv() {
-		t.Error("true not seen")
-	}
-	t.Setenv("VEP_DEBUG", "")
-	if DebugFromEnv() {
-		t.Error("empty is on")
 	}
 }

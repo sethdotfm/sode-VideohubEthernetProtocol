@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -23,9 +24,10 @@ type Config struct {
 	ProtectDevice int `yaml:"protectDevice" json:"protectDevice"`
 	// ResyncSeconds is how often names, routes and locks are re-polled.
 	ResyncSeconds int `yaml:"resyncSeconds" json:"resyncSeconds"`
-	// Debug is no longer a setting: it comes from VEP_DEBUG at start-up (set
-	// in compose). The field stays so config files written by earlier
-	// versions still load (KnownFields), and is never saved or sent to the page.
+	// Debug is no longer a setting: VEP_DEBUG is read at start-up (set in
+	// compose). The field stays only so config files written by earlier
+	// versions still load (KnownFields); Load clears it, so it is never
+	// acted on, saved or sent to the page.
 	Debug bool `yaml:"debug,omitempty" json:"-"`
 }
 
@@ -77,13 +79,6 @@ func envInt(k string, def int) (int, error) {
 	return n, nil
 }
 
-// DebugFromEnv reports whether VEP_DEBUG asks for the Videohub wire traffic
-// to be logged.
-func DebugFromEnv() bool {
-	v := os.Getenv("VEP_DEBUG")
-	return v == "1" || strings.EqualFold(v, "true")
-}
-
 // FromEnv overlays VEP_* variables on base.
 func FromEnv(base Config) (Config, error) {
 	var err error
@@ -111,9 +106,10 @@ func Load(path string) (c Config, exists bool, err error) {
 	}
 	d := yaml.NewDecoder(bytes.NewReader(b))
 	d.KnownFields(true)
-	if err := d.Decode(&c); err != nil && err.Error() != "EOF" {
+	if err := d.Decode(&c); err != nil && !errors.Is(err, io.EOF) {
 		return c, true, err
 	}
+	c.Debug = false // dropped setting: accepted from old files, never acted on
 	c.Normalize()
 	return c, true, c.Validate()
 }

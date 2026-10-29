@@ -68,22 +68,27 @@ func TestOpenHolderBadFile(t *testing.T) {
 	}
 }
 
-func TestOldDebugFileLoadsAndIsNotRewritten(t *testing.T) {
+// The GUI saves by changing a copy of Get(): an old file's `debug: true` must
+// not survive that round trip.
+func TestOldDebugFileIsDroppedOnAGetModifySetRoundTrip(t *testing.T) {
 	cleanEnv(t)
 	p := filepath.Join(t.TempDir(), "config.yaml")
-	os.WriteFile(p, []byte("hub: a\nprotectDevice: 1\nresyncSeconds: 60\ndebug: true\n"), 0o644)
+	if err := os.WriteFile(p, []byte("hub: a\nprotectDevice: 1\nresyncSeconds: 60\ndebug: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	h, err := OpenHolder(p, nolog)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !h.Get().Debug {
-		t.Fatal("debug should load")
+	if h.Get().Debug {
+		t.Fatal("the dropped debug setting was kept")
 	}
-	if _, err := h.Set(Config{Hub: "b", ProtectDevice: 1, ResyncSeconds: 60}); err != nil {
+	c := h.Get()
+	c.Hub = "b"
+	if _, err := h.Set(c); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(p)
-	if strings.Contains(string(b), "debug") {
+	if b, _ := os.ReadFile(p); strings.Contains(string(b), "debug") {
 		t.Fatalf("debug written:\n%s", b)
 	}
 }
