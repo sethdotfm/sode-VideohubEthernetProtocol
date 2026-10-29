@@ -245,13 +245,6 @@ func (s *Server) Start(addr string) error {
 	return nil
 }
 
-// Serve serves on ln until it is closed (by Stop or the caller).
-func (s *Server) Serve(ln net.Listener) error {
-	s.setListener(ln)
-	s.accept(ln)
-	return nil
-}
-
 func (s *Server) setListener(ln net.Listener) {
 	s.mu.Lock()
 	s.ln, s.addr = ln, ln.Addr().String()

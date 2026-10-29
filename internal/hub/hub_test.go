@@ -77,7 +77,8 @@ func kind(k state.EventKind) func(state.Event) bool {
 }
 
 func TestReadyAfterEndPrelude(t *testing.T) {
-	h := newHub(t, 4, 6)
+	// CRLF line ends in the preamble: a real hub's lines may end either way.
+	h := newHub(t, 4, 6, func(o *vhsim.Options) { o.CRLFPreamble = true })
 	r := start(t, h, func(c *Client) { c.quiet = time.Hour })
 	r.expect("up", kind(state.EvUp))
 	s := r.st.Snapshot()
