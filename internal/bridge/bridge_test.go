@@ -443,16 +443,25 @@ func (r *slowRouter) Take(out, in int) error {
 	return nil
 }
 
-func TestQueuedTakesDroppedWhileHubDown(t *testing.T) {
+func TestQueuedTakesDroppedWhenHubGoesDownAndComesBack(t *testing.T) {
 	st := state.New()
 	st.SetUp("t", []string{"a"}, make([]string, 2), nil, nil)
-	r := &slowRouter{}
-	s := New(st, r, nil, nil)
+	s := New(st, &slowRouter{}, nil, nil)
+	evs, cancel := st.Subscribe()
+	defer cancel()
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	go s.events(ctx, evs) // no takeLoop: queued takes stay queued unless the event loop drops them
 	s.takes <- take{1, 0}
 	s.takes <- take{0, 0}
+	// A quick down then up: the hub is already back when the drain runs.
 	st.SetDown()
-	s.drainTakes()
-	if len(s.takes) != 0 {
-		t.Fatalf("%d takes still queued after hub down", len(s.takes))
+	st.SetUp("t", []string{"a"}, make([]string, 2), nil, nil)
+	deadline := time.Now().Add(3 * time.Second)
+	for len(s.takes) != 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := len(s.takes); n != 0 {
+		t.Fatalf("%d takes still queued after the hub went down", n)
 	}
 }

@@ -137,7 +137,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	}
 }
 
-// closeAll closes every session; Sode reconnects and re-polls.
+// closeAll closes every session (Sode reconnects and re-polls) and forgets
+// queued connects: Sode timed them out long ago, and they must not reach a
+// hub that has since come back.
 func (s *Server) closeAll() {
 	s.mu.Lock()
 	var all []*client
@@ -148,10 +150,6 @@ func (s *Server) closeAll() {
 	for _, c := range all {
 		c.close()
 	}
-}
-
-// drainTakes forgets queued connects: Sode timed them out long ago.
-func (s *Server) drainTakes() {
 	for {
 		select {
 		case <-s.takes:
@@ -184,11 +182,14 @@ func (s *Server) events(ctx context.Context, evs <-chan state.Event) {
 		case ev = <-evs:
 		}
 		switch ev.Kind {
-		case state.EvUp, state.EvDown, state.EvResync:
+		case state.EvUp:
+			s.logf("hub up: accepting SW-P-08 clients")
 			s.closeAll()
-			if !s.store.Snapshot().Up {
-				s.drainTakes()
-			}
+		case state.EvDown:
+			s.logf("hub down: closing SW-P-08 sessions, refusing clients")
+			s.closeAll()
+		case state.EvResync:
+			s.closeAll() // events were lost: make Sode re-poll everything
 		case state.EvRoute:
 			src := ev.In
 			if src < 0 {

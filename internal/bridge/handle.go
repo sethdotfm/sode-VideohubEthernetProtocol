@@ -14,22 +14,23 @@ type request struct {
 	code                       byte
 }
 
+// minLen is the shortest valid message for each command the server answers.
+var minLen = map[byte]int{
+	swp08.CmdExtInterrogate:    5,
+	swp08.CmdExtConnect:        7,
+	swp08.CmdExtTallyDumpReq:   3,
+	swp08.CmdExtProtectDumpReq: 3,
+	swp08.CmdExtSrcNamesReq:    4,
+	swp08.CmdExtDstNamesReq:    4,
+	swp08.CmdSrcNamesReq:       3,
+	swp08.CmdDstNamesReq:       3,
+}
+
 // parseRequest checks the message is long enough for its command and records
 // the client's matrix. ok is false for short or unknown messages.
 func (s *Server) parseRequest(c *client, m []byte) (r request, ok bool) {
-	need := 0
-	switch m[0] {
-	case swp08.CmdExtInterrogate:
-		need = 5
-	case swp08.CmdExtConnect:
-		need = 7
-	case swp08.CmdExtTallyDumpReq, swp08.CmdExtProtectDumpReq:
-		need = 3
-	case swp08.CmdExtSrcNamesReq, swp08.CmdExtDstNamesReq:
-		need = 4
-	case swp08.CmdSrcNamesReq, swp08.CmdDstNamesReq:
-		need = 3
-	default:
+	need, known := minLen[m[0]]
+	if !known {
 		s.logf("ignored cmd 0x%02X", m[0])
 		return r, false
 	}
