@@ -8,11 +8,12 @@ import (
 
 	"github.com/sethdotfm/sode-vep/internal/config"
 	"github.com/sethdotfm/sode-vep/internal/state"
+	"github.com/sethdotfm/sode-vep/internal/vhsim"
 )
 
 type rig struct {
 	t      *testing.T
-	h      *fakeHub
+	h      *vhsim.Server
 	st     *state.Store
 	c      *Client
 	events <-chan state.Event
@@ -20,12 +21,26 @@ type rig struct {
 	done   chan struct{}
 }
 
-func start(t *testing.T, h *fakeHub, tune func(*Client)) *rig {
+// newHub starts a fake hub named "Fake Hub"; mut may set quirks first.
+func newHub(t *testing.T, nin, nout int, mut ...func(*vhsim.Options)) *vhsim.Server {
 	t.Helper()
-	h.serve()
+	o := vhsim.Options{Model: "Fake Hub", Inputs: nin, Outputs: nout}
+	for _, m := range mut {
+		m(&o)
+	}
+	h := vhsim.New(o)
+	if err := h.Start("127.0.0.1:0"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(h.Stop)
+	return h
+}
+
+func start(t *testing.T, h *vhsim.Server, tune func(*Client)) *rig {
+	t.Helper()
 	st := state.New()
 	cfg := config.Defaults()
-	cfg.Hub = h.addr()
+	cfg.Hub = h.Addr()
 	c := New(st, func() config.Config { return cfg }, t.Logf)
 	c.backoffMin, c.backoffMax = 20*time.Millisecond, 50*time.Millisecond
 	c.quiet = 80 * time.Millisecond
@@ -62,7 +77,7 @@ func kind(k state.EventKind) func(state.Event) bool {
 }
 
 func TestReadyAfterEndPrelude(t *testing.T) {
-	h := newFakeHub(t, 4, 6)
+	h := newHub(t, 4, 6)
 	r := start(t, h, func(c *Client) { c.quiet = time.Hour })
 	r.expect("up", kind(state.EvUp))
 	s := r.st.Snapshot()
@@ -75,8 +90,7 @@ func TestReadyAfterEndPrelude(t *testing.T) {
 }
 
 func TestReadyViaQuietTimer(t *testing.T) {
-	h := newFakeHub(t, 3, 3)
-	h.endPrelude = false
+	h := newHub(t, 3, 3, func(o *vhsim.Options) { o.NoEndPrelude = true })
 	r := start(t, h, nil)
 	r.expect("up", kind(state.EvUp))
 	if s := r.st.Snapshot(); len(s.Route) != 3 || s.Route[2] != 2 {
@@ -85,8 +99,7 @@ func TestReadyViaQuietTimer(t *testing.T) {
 }
 
 func TestDevicePresentFalseStaysDown(t *testing.T) {
-	h := newFakeHub(t, 2, 2)
-	h.present = "false"
+	h := newHub(t, 2, 2, func(o *vhsim.Options) { o.DeviceAbsent = true })
 	r := start(t, h, nil)
 	select {
 	case e := <-r.events:
@@ -99,7 +112,7 @@ func TestDevicePresentFalseStaysDown(t *testing.T) {
 }
 
 func TestTakeAckAndBroadcast(t *testing.T) {
-	h := newFakeHub(t, 4, 4)
+	h := newHub(t, 4, 4)
 	r := start(t, h, nil)
 	r.expect("up", kind(state.EvUp))
 	if err := r.c.Take(1, 3); err != nil {
@@ -115,8 +128,7 @@ func TestTakeAckAndBroadcast(t *testing.T) {
 }
 
 func TestTakeLockedNak(t *testing.T) {
-	h := newFakeHub(t, 4, 4)
-	h.owner[2] = h.ext
+	h := newHub(t, 4, 4, func(o *vhsim.Options) { o.Locks = []int{2} })
 	r := start(t, h, nil)
 	r.expect("up", kind(state.EvUp))
 	if r.st.Snapshot().Lock[2] != 'L' {
@@ -132,15 +144,15 @@ func TestTakeLockedNak(t *testing.T) {
 }
 
 func TestExternalChanges(t *testing.T) {
-	h := newFakeHub(t, 4, 4)
+	h := newHub(t, 4, 4)
 	r := start(t, h, nil)
 	r.expect("up", kind(state.EvUp))
-	h.externalRoute(0, 3)
+	h.SetRoute(0, 3)
 	e := r.expect("route", kind(state.EvRoute))
 	if e.Out != 0 || e.In != 3 {
 		t.Fatalf("%+v", e)
 	}
-	h.lockExternally(1)
+	h.LockExternal(1)
 	r.expect("lock", kind(state.EvLock))
 	if r.st.Snapshot().Lock[1] != 'L' {
 		t.Fatal("lock not applied")
@@ -148,10 +160,10 @@ func TestExternalChanges(t *testing.T) {
 }
 
 func TestDropThenReconnect(t *testing.T) {
-	h := newFakeHub(t, 2, 2)
+	h := newHub(t, 2, 2)
 	r := start(t, h, nil)
 	r.expect("up", kind(state.EvUp))
-	h.dropAll()
+	h.DropClients()
 	r.expect("down", kind(state.EvDown))
 	if r.st.Snapshot().Up {
 		t.Fatal("still up")
@@ -160,19 +172,19 @@ func TestDropThenReconnect(t *testing.T) {
 }
 
 func TestPingTimeoutDropsLink(t *testing.T) {
-	h := newFakeHub(t, 2, 2)
+	h := newHub(t, 2, 2)
 	r := start(t, h, func(c *Client) {
 		c.pingAfter, c.deadAfter, c.cmdTimeout = 60*time.Millisecond, 200*time.Millisecond, 100*time.Millisecond
 	})
 	r.expect("up", kind(state.EvUp))
-	h.silent.Store(true)
+	h.SetSilent(true)
 	r.expect("down", kind(state.EvDown))
-	h.silent.Store(false)
+	h.SetSilent(false)
 	r.expect("up again", kind(state.EvUp))
 }
 
 func TestPingKeepsLinkAlive(t *testing.T) {
-	h := newFakeHub(t, 2, 2)
+	h := newHub(t, 2, 2)
 	r := start(t, h, func(c *Client) {
 		c.pingAfter, c.deadAfter = 50*time.Millisecond, 150*time.Millisecond
 	})
@@ -185,10 +197,10 @@ func TestPingKeepsLinkAlive(t *testing.T) {
 }
 
 func TestResyncAppliesHiddenLabelChange(t *testing.T) {
-	h := newFakeHub(t, 2, 3)
+	h := newHub(t, 2, 3)
 	r := start(t, h, nil)
 	r.expect("up", kind(state.EvUp))
-	h.renameQuietly(1, "Studio B")
+	h.SetOutputLabel(1, "Studio B")
 	before := r.c.LastResync()
 	time.Sleep(2 * time.Millisecond)
 	r.c.Resync()
@@ -206,19 +218,18 @@ func TestResyncAppliesHiddenLabelChange(t *testing.T) {
 }
 
 func TestPeriodicResync(t *testing.T) {
-	h := newFakeHub(t, 2, 3)
+	h := newHub(t, 2, 3)
 	r := start(t, h, func(c *Client) { c.resyncEvery = 80 * time.Millisecond })
 	r.expect("up", kind(state.EvUp))
-	h.renameQuietly(0, "Periodic")
+	h.SetOutputLabel(0, "Periodic")
 	r.expect("labels", kind(state.EvLabels))
 }
 
 func TestReconfigureEmptyHubIdlesDown(t *testing.T) {
-	h := newFakeHub(t, 2, 2)
-	h.serve()
+	h := newHub(t, 2, 2)
 	st := state.New()
 	cfg := config.Defaults()
-	cfg.Hub = h.addr()
+	cfg.Hub = h.Addr()
 	var mu = make(chan struct{}, 1)
 	mu <- struct{}{}
 	get := func() config.Config { <-mu; defer func() { mu <- struct{}{} }(); return cfg }
@@ -254,7 +265,7 @@ func TestReconfigureEmptyHubIdlesDown(t *testing.T) {
 		t.Fatal("up with empty hub")
 	}
 	<-mu
-	cfg.Hub = h.addr()
+	cfg.Hub = h.Addr()
 	mu <- struct{}{}
 	c.Reconfigure()
 	wait(state.EvUp)

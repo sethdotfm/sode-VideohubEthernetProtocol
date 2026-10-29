@@ -1,4 +1,4 @@
-package main
+package vhsim
 
 import (
 	"bufio"
@@ -14,17 +14,14 @@ type tc struct {
 	r *bufio.Reader
 }
 
-func start(t *testing.T) (*sim, string) {
+func start(t *testing.T) (*Server, string) {
 	t.Helper()
-	s := newSim("Test Hub", 4, 4)
-	s.owner[3] = s.ext
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
+	s := New(Options{Model: "Test Hub", Inputs: 4, Outputs: 4, Locks: []int{3}})
+	if err := s.Start("127.0.0.1:0"); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = ln.Close() })
-	go s.serve(ln)
-	return s, ln.Addr().String()
+	t.Cleanup(s.Stop)
+	return s, s.Addr()
 }
 
 func dial(t *testing.T, addr string) *tc {
@@ -154,7 +151,7 @@ func TestPanelAndLabels(t *testing.T) {
 	s.route = []int{0, 0, 0, 0}
 	s.mu.Unlock()
 	for i := 0; i < 50; i++ {
-		s.panelOnce()
+		s.PanelOnce()
 		if len(s.clients) == 1 && func() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.route[0]+s.route[1]+s.route[2]+s.route[3] > 0 }() {
 			break
 		}
