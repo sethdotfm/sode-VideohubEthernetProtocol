@@ -18,6 +18,16 @@ type fakeRouter struct {
 	takes [][2]int
 	err   error
 	ch    chan [2]int
+	lk    chan [2]int // out, 1 = lock, 0 = unlock
+}
+
+func (f *fakeRouter) Lock(out int, lock bool) error {
+	v := 0
+	if lock {
+		v = 1
+	}
+	f.lk <- [2]int{out, v}
+	return f.err
 }
 
 func (f *fakeRouter) Take(out, in int) error {
@@ -38,7 +48,7 @@ type rig struct {
 
 func newRig(t *testing.T, up bool) *rig {
 	t.Helper()
-	r := &rig{t: t, store: state.New(), rt: &fakeRouter{ch: make(chan [2]int, 16)}}
+	r := &rig{t: t, store: state.New(), rt: &fakeRouter{ch: make(chan [2]int, 16), lk: make(chan [2]int, 16)}}
 	if up {
 		r.up()
 	}
@@ -407,7 +417,7 @@ func TestTakesReachRouterInOrder(t *testing.T) {
 	defer cancel()
 	go s.takeLoop(ctx)
 	for i := 0; i < 20; i++ {
-		s.takes <- take{i, i}
+		s.takes <- take{out: i, in: i}
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
@@ -436,6 +446,8 @@ type slowRouter struct {
 	got []int
 }
 
+func (r *slowRouter) Lock(int, bool) error { return nil }
+
 func (r *slowRouter) Take(out, in int) error {
 	time.Sleep(time.Duration(20-out) * time.Millisecond) // earlier takes are slower
 	r.mu.Lock()
@@ -453,8 +465,8 @@ func TestQueuedTakesDroppedWhenHubGoesDownAndComesBack(t *testing.T) {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	go s.events(ctx, evs) // no takeLoop: queued takes stay queued unless the event loop drops them
-	s.takes <- take{1, 0}
-	s.takes <- take{0, 0}
+	s.takes <- take{out: 1, in: 0}
+	s.takes <- take{out: 0, in: 0}
 	// A quick down then up: the hub is already back when the drain runs.
 	st.SetDown()
 	st.SetUp("t", []string{"a"}, make([]string, 2), nil, nil)
@@ -498,7 +510,7 @@ func isClosed(c *client, wait time.Duration) bool {
 
 func TestResyncDisconnectsClientButUpDoesNot(t *testing.T) {
 	s, evs, c := eventsRig(t)
-	s.takes <- take{0, 0}
+	s.takes <- take{out: 0, in: 0}
 	evs <- state.Event{Kind: state.EvUp}
 	if isClosed(c, 200*time.Millisecond) {
 		t.Fatal("EvUp disconnected a connected client")
@@ -517,4 +529,57 @@ func TestResyncDisconnectsClientButUpDoesNot(t *testing.T) {
 	if len(s.takes) != 0 {
 		t.Fatal("EvResync left takes queued")
 	}
+}
+
+func TestProtectInterrogate(t *testing.T) {
+	r := newRig(t, true)
+	r.store.ApplyLocks(map[int]byte{1: 'L'})
+	c := r.dial()
+	c.send(swp08.ExtProtectInterrogate(0, 0, 1))
+	want := swp08.ExtProtectTally(0, 0, 1, true, 9)
+	if got := c.next(); string(got) != string(want) {
+		t.Errorf("got % X want % X", got, want)
+	}
+	c.send(swp08.ExtProtectInterrogate(0, 0, 0))
+	want = swp08.ExtProtectTally(0, 0, 0, false, 9)
+	if got := c.next(); string(got) != string(want) {
+		t.Errorf("got % X want % X", got, want)
+	}
+}
+
+func TestProtectConnectAndDisconnectLockTheHub(t *testing.T) {
+	r := newRig(t, true)
+	r.store.ApplyLocks(map[int]byte{2: 'O'})
+	c := r.dial()
+	c.send(swp08.ExtProtectConnect(0, 0, 1, 126))
+	c.send(swp08.ExtProtectDisconnect(0, 0, 2, 126))
+	for _, want := range [][2]int{{1, 1}, {2, 0}} {
+		select {
+		case got := <-r.rt.lk:
+			if got != want {
+				t.Errorf("lock %v want %v", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("no lock call")
+		}
+	}
+	c.quiet() // the reply is the hub's lock change, not the request
+}
+
+func TestProtectRefusalsSendNothing(t *testing.T) {
+	r := newRig(t, true)
+	r.store.ApplyLocks(map[int]byte{0: 'L', 1: 'O'})
+	c := r.dial()
+	c.send(swp08.ExtProtectDisconnect(0, 0, 0, 1)) // another client's lock
+	c.send(swp08.ExtProtectConnect(0, 0, 0, 1))
+	c.send(swp08.ExtProtectConnect(0, 0, 1, 1))    // already ours
+	c.send(swp08.ExtProtectDisconnect(0, 0, 2, 1)) // not locked
+	c.send(swp08.ExtProtectConnect(0, 1, 2, 1))    // level 1
+	c.send(swp08.ExtProtectConnect(0, 0, 9, 1))    // out of range
+	select {
+	case got := <-r.rt.lk:
+		t.Fatalf("unexpected lock call %v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+	c.quiet()
 }

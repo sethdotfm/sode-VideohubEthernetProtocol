@@ -25,8 +25,11 @@ const (
 	CmdExtConnect             = 0x82
 	CmdExtTally               = 0x83
 	CmdExtConnected           = 0x84
+	CmdExtProtectInterrogate  = 0x8A
 	CmdExtProtectTally        = 0x8B
+	CmdExtProtectConnect      = 0x8C
 	CmdExtProtectConnected    = 0x8D
+	CmdExtProtectDisconnect   = 0x8E
 	CmdExtProtectDisconnected = 0x8F
 	CmdExtProtectDumpReq      = 0x93
 	CmdExtProtectDump         = 0x94
@@ -114,6 +117,22 @@ func ExtConnected(matrix, level, dst, src int) []byte {
 
 func xp(cmd byte, matrix, level, dst, src int) []byte {
 	return []byte{cmd, byte(matrix), byte(level), byte(dst >> 8), byte(dst), byte(src >> 8), byte(src)}
+}
+
+// ExtProtectInterrogate asks for dst's protect state.
+func ExtProtectInterrogate(matrix, level, dst int) []byte {
+	return []byte{CmdExtProtectInterrogate, byte(matrix), byte(level), byte(dst >> 8), byte(dst)}
+}
+
+// ExtProtectConnect asks the router to protect dst for device. The Ultrix
+// takes the device as a plain 16-bit number here (measured 2026-11-16).
+func ExtProtectConnect(matrix, level, dst, device int) []byte {
+	return []byte{CmdExtProtectConnect, byte(matrix), byte(level), byte(dst >> 8), byte(dst), byte(device >> 8), byte(device)}
+}
+
+// ExtProtectDisconnect asks the router to clear device's protect on dst.
+func ExtProtectDisconnect(matrix, level, dst, device int) []byte {
+	return []byte{CmdExtProtectDisconnect, byte(matrix), byte(level), byte(dst >> 8), byte(dst), byte(device >> 8), byte(device)}
 }
 
 // ExtProtectDumpReq asks for protect states from firstDst onwards.

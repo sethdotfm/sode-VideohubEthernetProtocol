@@ -440,3 +440,26 @@ func (c *Client) Take(out, in int) error {
 	}
 	return s.command(fmt.Sprintf("%s:\n%d %d\n\n", hdrRoute, out, in))
 }
+
+// Lock takes or drops our own lock on out. It never force-unlocks (F):
+// another client's lock stays theirs.
+func (c *Client) Lock(out int, lock bool) error {
+	snap := c.store.Snapshot()
+	if !snap.Up {
+		return errDown
+	}
+	if out < 0 || out >= len(snap.Lock) {
+		return fmt.Errorf("lock %d out of range", out)
+	}
+	c.mu.Lock()
+	s := c.cur
+	c.mu.Unlock()
+	if s == nil || !s.isReady() {
+		return errDown
+	}
+	v := "U"
+	if lock {
+		v = "O"
+	}
+	return s.command(fmt.Sprintf("%s:\n%d %s\n\n", hdrLock, out, v))
+}

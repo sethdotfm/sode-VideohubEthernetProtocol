@@ -13,10 +13,14 @@ var minLen = map[byte]int{
 	swp08.CmdExtConnect:        7,
 	swp08.CmdExtTallyDumpReq:   3,
 	swp08.CmdExtProtectDumpReq: 3,
-	swp08.CmdExtSrcNamesReq:    4,
-	swp08.CmdExtDstNamesReq:    4,
-	swp08.CmdSrcNamesReq:       3,
-	swp08.CmdDstNamesReq:       3,
+	// Protect connect and disconnect carry a device number, which is ignored.
+	swp08.CmdExtProtectInterrogate: 5,
+	swp08.CmdExtProtectConnect:     5,
+	swp08.CmdExtProtectDisconnect:  5,
+	swp08.CmdExtSrcNamesReq:        4,
+	swp08.CmdExtDstNamesReq:        4,
+	swp08.CmdSrcNamesReq:           3,
+	swp08.CmdDstNamesReq:           3,
 }
 
 // handle answers one client message. minLen is the only length guard.
@@ -49,6 +53,13 @@ func (s *Server) handle(c *client, m []byte) {
 		}
 	case swp08.CmdExtConnect:
 		s.connect(snap, level, int(m[3])<<8|int(m[4]), int(m[5])<<8|int(m[6]))
+	case swp08.CmdExtProtectInterrogate:
+		dst := int(m[3])<<8 | int(m[4])
+		if dst < len(snap.Lock) {
+			c.msg(swp08.ExtProtectTally(mx, level, dst, level == 0 && state.Locked(snap.Lock[dst]), s.protectDevice()))
+		}
+	case swp08.CmdExtProtectConnect, swp08.CmdExtProtectDisconnect:
+		s.protect(snap, level, int(m[3])<<8|int(m[4]), m[0] == swp08.CmdExtProtectConnect)
 	case swp08.CmdExtTallyDumpReq:
 		chunks(len(snap.Route), 64, func(i, end int) {
 			srcs := make([]int, 0, end-i)
@@ -88,9 +99,30 @@ func (s *Server) connect(snap state.Snapshot, level, dst, src int) {
 		s.logf("connect dst %d dropped: output is locked", dst)
 	default:
 		select {
-		case s.takes <- take{dst, src}:
+		case s.takes <- take{out: dst, in: src}:
 		default:
 			s.logf("take %d <- %d dropped: queue full", dst, src)
+		}
+	}
+}
+
+// protect queues a hub lock or unlock. Like the Ultrix, a refusal sends
+// nothing: the 0x8D/0x8F reply comes only from the hub's lock change.
+func (s *Server) protect(snap state.Snapshot, level, dst int, lock bool) {
+	switch {
+	case level != 0:
+		s.logf("protect on level %d ignored (only level 0 is routed)", level)
+	case dst >= len(snap.Lock):
+		s.logf("protect out of range: dst %d", dst)
+	case snap.Lock[dst] == state.LockedOther:
+		s.logf("protect dst %d dropped: another hub client holds the lock", dst)
+	case lock == (snap.Lock[dst] == state.LockedOwn):
+		s.logf("protect dst %d: already %v", dst, lock)
+	default:
+		select {
+		case s.takes <- take{out: dst, lock: &lock}:
+		default:
+			s.logf("protect %d dropped: queue full", dst)
 		}
 	}
 }

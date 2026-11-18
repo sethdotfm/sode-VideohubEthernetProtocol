@@ -32,6 +32,7 @@ export function buildRows(st) {
       inNum: src >= 0 ? src + 1 : null,
       inName: src >= 0 ? (st.inputs?.[src] ?? '') : '',
       lock: lockLabel(st.lock?.[i]),
+      lockCode: st.lock?.[i] ?? 'U',
     });
   }
   return rows;

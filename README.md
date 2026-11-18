@@ -64,7 +64,8 @@ Compose host ports: `VEP_GUI_PORT`, `VEP_SWP08_PORT`, `SODE_PORT`, `VHSIM_PORT`.
 ## How it behaves
 
 - A take from Sode goes to the hub. The route change comes back from the hub and is announced to Sode. A take that changes nothing, or that the hub refuses, gets no reply (as a real router does), so Sode reports it by its own timeout.
-- Takes to locked outputs are not forwarded. Sode cannot change locks.
+- Takes to locked outputs are not forwarded.
+- An SW-P-08 protect or unprotect on level 0 locks or unlocks the output on the hub. Outputs locked by another hub client cannot be unlocked. Sode itself does not send these messages yet.
 - If the hub is unreachable, the bridge drops Sode's connection and refuses new ones until the hub is back, so Sode shows the router as down rather than stale names.
 - Names are cut to the length Sode asks for (16 at most) and non-ASCII characters are folded. The GUI shows anything past 16 characters in red.
 

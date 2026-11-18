@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -23,6 +24,7 @@ type fixture struct {
 	set   error
 	srv   *httptest.Server
 	cl    atomic.Int32
+	lock  func(out int, lock bool) error
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -42,6 +44,7 @@ func newFixture(t *testing.T) *fixture {
 		},
 		Clients: func() int { return int(f.cl.Load()) },
 		Info:    func() Info { return Info{Listen: ":8910", Started: start, Version: "v1", HubAddr: "10.0.0.5:9990"} },
+		Lock:    func(out int, lock bool) error { return f.lock(out, lock) },
 	}))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -214,7 +217,7 @@ func TestEvents(t *testing.T) {
 func TestEventsHeartbeatAndClientCount(t *testing.T) {
 	old1, old2 := heartbeat, refreshAll
 	heartbeat, refreshAll = 30*time.Millisecond, 30*time.Millisecond
-	defer func() { heartbeat, refreshAll = old1, old2 }()
+	t.Cleanup(func() { heartbeat, refreshAll = old1, old2 }) // after the fixture closes the server, so no handler still reads them
 	f := newFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -296,7 +299,7 @@ func TestStateHasNoNow(t *testing.T) {
 func TestEventsIdleDoesNotResend(t *testing.T) {
 	old1, old2 := heartbeat, refreshAll
 	heartbeat, refreshAll = time.Hour, 20*time.Millisecond
-	defer func() { heartbeat, refreshAll = old1, old2 }()
+	t.Cleanup(func() { heartbeat, refreshAll = old1, old2 }) // after the fixture closes the server, so no handler still reads them
 	f := newFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -321,5 +324,37 @@ func TestEventsIdleDoesNotResend(t *testing.T) {
 	case <-extra:
 		t.Fatal("unchanged state was re-sent")
 	case <-time.After(300 * time.Millisecond): // ~15 refresh ticks
+	}
+}
+
+func TestLockEndpoint(t *testing.T) {
+	var got []string
+	f := newFixture(t)
+	f.lock = func(out int, lock bool) error {
+		got = append(got, fmt.Sprint(out, lock))
+		if out == 2 {
+			return errors.New("hub refused")
+		}
+		return nil
+	}
+	post := func(body string) int {
+		r, err := http.Post(f.srv.URL+"/api/lock", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	if c := post(`{"out":1,"lock":true}`); c != 200 {
+		t.Errorf("lock: %d", c)
+	}
+	if c := post(`{"out":2,"lock":false}`); c != http.StatusConflict {
+		t.Errorf("refused: %d", c)
+	}
+	if c := post(`{"lock":true}`); c != http.StatusBadRequest {
+		t.Errorf("no out: %d", c)
+	}
+	if fmt.Sprint(got) != "[1 true 2 false]" {
+		t.Errorf("calls %v", got)
 	}
 }

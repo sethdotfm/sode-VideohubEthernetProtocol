@@ -31,6 +31,7 @@ type Deps struct {
 	SetConfig func(config.Config) error // validates and saves; the error text is shown in the UI
 	Clients   func() int                // connected Sode clients
 	Info      func() Info
+	Lock      func(out int, lock bool) error // nil hides nothing; the route answers 501
 }
 
 var (
@@ -72,6 +73,7 @@ func New(d Deps) http.Handler {
 	})
 	h.mux.HandleFunc("/api/config", h.config)
 	h.mux.HandleFunc("/events", h.events)
+	h.mux.HandleFunc("/api/lock", h.lock)
 	static, _ := fs.Sub(ui.FS, ".")
 	h.mux.Handle("/", http.FileServerFS(static))
 	return h.mux
@@ -104,6 +106,39 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
+}
+
+// lock takes or drops the bridge's own hub lock on one output (0-based).
+// It waits for the hub's ACK/NAK; the new state arrives on /events.
+func (h *handler) lock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.Lock == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "locking is not available"})
+		return
+	}
+	if ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); ct != "application/json" {
+		writeJSON(w, http.StatusUnsupportedMediaType, map[string]string{"error": "Content-Type must be application/json"})
+		return
+	}
+	var req struct {
+		Out  *int `json:"out"`
+		Lock bool `json:"lock"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil || req.Out == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body must be {\"out\": n, \"lock\": bool}"})
+		return
+	}
+	if err := h.Lock(*req.Out, req.Lock); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (h *handler) config(w http.ResponseWriter, r *http.Request) {

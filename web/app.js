@@ -94,6 +94,7 @@ function renderRows() {
     el('td', 'vep__name', nameCell(r.name)),
     el('td', 'vep__name', r.inNum == null ? el('span', 'vep__dim', 'Nothing routed') : el('span', null, el('span', 'vep__num', String(r.inNum)), ' ', nameCell(r.inName))),
     el('td', null, lockCell(r.lock)),
+    el('td', null, lockButton(r)),
   )));
   const long = countLong(st?.outputs ?? []) + countLong(st?.inputs ?? []);
   $('long-note').hidden = !long;
@@ -108,6 +109,29 @@ function renderRows() {
 function lockCell(label) {
   if (label === 'Unlocked') return label;
   return el('span', `pb-badge pb-badge--${label.includes('other') ? 'warn' : 'info'}`, label);
+}
+
+// The bridge can only change its own lock; another client's stays theirs.
+function lockButton(r) {
+  if (r.lockCode === 'L') return el('span', 'vep__dim', 'Held by another client');
+  const lock = r.lockCode !== 'O';
+  const b = el('button', 'pb-btn pb-btn--sm pb-btn--outline', lock ? 'Lock' : 'Unlock');
+  b.type = 'button';
+  b.disabled = !st?.up;
+  b.addEventListener('click', async () => {
+    b.disabled = true;
+    $('lock-err').hidden = true;
+    try {
+      const res = await fetch('api/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ out: r.out - 1, lock }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    } catch (err) {
+      $('lock-err').textContent = `Output ${r.out} not ${lock ? 'locked' : 'unlocked'}: ${err.message}`;
+      $('lock-err').hidden = false;
+      b.disabled = false;
+    }
+  });
+  return b;
 }
 
 function apply(next) {
