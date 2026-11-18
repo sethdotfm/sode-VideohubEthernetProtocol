@@ -33,13 +33,13 @@ Without `VEP_CONFIG`, config comes from `VEP_*` env and is not persisted. The we
 
 ## Architecture
 
-- `internal/state`: `Store` is the cache and the only shared state. The hub client is its only writer (`SetUp`, `SetDown`, `ApplyRoutes/Labels/Locks`, each returns/publishes only *real* changes); the SW-P-08 server and the web page `Subscribe` for events (a slow subscriber gets `EvResync` and re-reads `Snapshot`). `Router.Take(out, in)` is how a take goes to the hub.
+- `internal/state`: `Store` is the cache and the only shared state. The hub client is its only writer (`SetUp`, `SetDown`, `ApplyRoutes/Labels/Locks`, each returns/publishes only *real* changes); the SW-P-08 server and the web page `Subscribe` for events (a slow subscriber gets `EvResync` and re-reads `Snapshot`). `Router.Take(out, in)` and `Router.Lock(out, lock)` are how takes and lock changes go to the hub.
 - `internal/hub`: Videohub client. Text blocks: `HEADER:` line, `index value` lines, blank line ends. Prelude order (v2.3): preamble, device, labels, routing, then locks. `END PRELUDE:` is *not* in the v2.3 document (newer firmware may send it): the initial dump is also taken as complete once the routing and locks blocks have arrived and 750ms of quiet follows (routing without locks: 3s of quiet). Locks are per client: `O` = ours, `L` = another client's. Route with `VIDEO OUTPUT ROUTING:\n<out> <in>\n\n` → `ACK`/`NAK`. `PING:` keepalive, reconnect with backoff, periodic resync of labels/routes/locks.
 - `internal/bridge`: SW-P-08 server, modelled on Sode's `swp08sim`. Rules:
   - ACK every valid frame at once, never wait on the hub (Sode's writer sends one message per ACK); NAK bad frames.
   - 0x82 connect → `Router.Take`; reply only via the hub's resulting route change as 0x84 to **all** clients. A no-op connect or a hub NAK sends nothing (like the Ultrix; Sode's take interrogates and times out honestly).
   - 0x81 → 0x83 from cache. 0x95 → 0x97, 64 per message. Names: std (0x64/0x66) and extended (0xE4/0xE6), cut to the asked length, folded to printable ASCII.
-  - Locks L/O → protected by `protectDevice`. 0x93 → 0x94 dump (state in bits 4-5 of byte 1, device in the rest, verified against a real Ultrix). Changes pushed as 0x8D/0x8F, built to round-trip through `swp08.Parse`; Sode's periodic re-poll is the fallback. A connect to a locked output is not sent to the hub.
+  - Locks L/O → protected by `protectDevice`. 0x93 → 0x94 dump (state in bits 4-5 of byte 1, device in the rest, verified against a real Ultrix). Changes pushed as 0x8D/0x8F, built to round-trip through `swp08.Parse`; Sode's periodic re-poll is the fallback. A connect to a locked output is not sent to the hub. 0x8A is answered with 0x8B from the cache. 0x8C/0x8E on level 0 queue `<out> O`/`<out> U` in the takes queue, and the device number in them is ignored. As with takes, only the hub's lock change replies (0x8D/0x8F). Another client's `L` is never forced (`F`). `cmd/protectprobe` sends one protect message and prints the replies as hex.
   - Hub down, or events lost to a slow subscriber (`EvResync`) → close every session so Sode reconnects and re-polls; while the hub is down refuse new ones until the hub's initial dump is complete again. Sode reconnects and re-polls on its own.
 - `internal/config`: `Defaults` → `FromEnv` (seed) → `Normalize`/`Validate`; YAML load/save.
 - `internal/web` + `web/`: `/`, `/healthz`, `/api/state`, `/api/config`, `/events` (SSE, no websocket dep).
@@ -53,4 +53,11 @@ Without `VEP_CONFIG`, config comes from `VEP_*` env and is not persisted. The we
 
 ## Verified against the real Videohub
 
-(Empty until field testing. Record model, firmware, and each behaviour confirmed live: whether the routing block is echoed to the requesting client, ACK/NAK ordering, PING, `Device present`, takes to `L`-locked outputs, client limit.)
+Smart Videohub 12G 40x40, protocol version 2.8, 2026-11-18 (behind sode2's deployed bridge):
+
+- `VIDEO OUTPUT LOCKS:\n<n> O\n\n` and `<n> U` get `ACK`, then the hub sends the new lock block to the client that asked too. That block is what produces the bridge's 0x8D/0x8F (8 ms end to end).
+- Another bridge on a different host sees our lock as `L` and reports it to its Sode as Protected.
+- A lock outlives the connection that set it.
+- A new connection from the same host sees that lock as `O` and can clear it with a plain `U` (seen once). Ownership looks tied to the client's IP address, not the TCP session. So a bridge restart keeps its locks, and two bridges on one host share them.
+
+Still to record: takes to `L`-locked outputs, `END PRELUDE:`, client limit.
