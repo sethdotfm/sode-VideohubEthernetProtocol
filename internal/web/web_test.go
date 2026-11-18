@@ -214,7 +214,7 @@ func TestEvents(t *testing.T) {
 func TestEventsHeartbeatAndClientCount(t *testing.T) {
 	old1, old2 := heartbeat, refreshAll
 	heartbeat, refreshAll = 30*time.Millisecond, 30*time.Millisecond
-	defer func() { heartbeat, refreshAll = old1, old2 }()
+	t.Cleanup(func() { heartbeat, refreshAll = old1, old2 }) // after the fixture closes the server, so no handler still reads them
 	f := newFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -296,7 +296,7 @@ func TestStateHasNoNow(t *testing.T) {
 func TestEventsIdleDoesNotResend(t *testing.T) {
 	old1, old2 := heartbeat, refreshAll
 	heartbeat, refreshAll = time.Hour, 20*time.Millisecond
-	defer func() { heartbeat, refreshAll = old1, old2 }()
+	t.Cleanup(func() { heartbeat, refreshAll = old1, old2 }) // after the fixture closes the server, so no handler still reads them
 	f := newFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
