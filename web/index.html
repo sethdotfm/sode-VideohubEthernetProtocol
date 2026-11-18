@@ -42,6 +42,7 @@
     <section class="vep__group" aria-labelledby="crosspoints-title">
       <h2 class="vep__legend" id="crosspoints-title">Crosspoints</h2>
       <div class="pb-alert pb-alert--warn" id="long-note" role="status" hidden></div>
+      <div class="pb-alert pb-alert--error" id="lock-err" role="alert" hidden></div>
       <div class="vep__line">
         <input class="pb-input vep__filter" id="filter" type="search" placeholder="Filter crosspoints" aria-label="Filter crosspoints by output or input name or number" spellcheck="false" autocomplete="off">
         <span class="vep__hint" id="count" aria-live="polite"></span>
@@ -54,6 +55,7 @@
               <th scope="col">Name</th>
               <th scope="col">Routed from</th>
               <th scope="col">Lock</th>
+              <th scope="col"><span class="pb-sr-only">Lock action</span></th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>

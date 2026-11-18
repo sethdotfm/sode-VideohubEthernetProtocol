@@ -18,7 +18,7 @@ test('lockLabel', () => {
 
 test('buildRows numbers from 1 and handles unrouted', () => {
   const r = buildRows(st);
-  assert.deepEqual(r[0], { out: 1, name: 'Monitor A', inNum: 2, inName: 'Camera 2', lock: 'Unlocked' });
+  assert.deepEqual(r[0], { out: 1, name: 'Monitor A', inNum: 2, inName: 'Camera 2', lock: 'Unlocked', lockCode: 'U' });
   assert.equal(r[1].inNum, null);
   assert.equal(r[1].lock, 'Locked (this client)');
   assert.equal(buildRows({}).length, 0);

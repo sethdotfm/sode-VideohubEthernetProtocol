@@ -68,6 +68,7 @@ func main() {
 			return err
 		},
 		Clients: br.Clients,
+		Lock:    hc.Lock,
 		Info: func() web.Info {
 			return web.Info{Listen: swAddr, Started: started, Version: version.Label(), LastResync: hc.LastResync(), HubAddr: h.Get().HubAddr()}
 		},
