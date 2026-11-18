@@ -534,15 +534,24 @@ func TestResyncDisconnectsClientButUpDoesNot(t *testing.T) {
 func TestProtectInterrogate(t *testing.T) {
 	r := newRig(t, true)
 	r.store.ApplyLocks(map[int]byte{1: 'L'})
+	time.Sleep(50 * time.Millisecond) // let the lock push go out before this client connects
 	c := r.dial()
+	// The ApplyLocks push (0x8D) may still arrive after the client connects.
+	tally := func() []byte {
+		for {
+			if m := c.next(); m[0] == swp08.CmdExtProtectTally {
+				return m
+			}
+		}
+	}
 	c.send(swp08.ExtProtectInterrogate(0, 0, 1))
 	want := swp08.ExtProtectTally(0, 0, 1, true, 9)
-	if got := c.next(); string(got) != string(want) {
+	if got := tally(); string(got) != string(want) {
 		t.Errorf("got % X want % X", got, want)
 	}
 	c.send(swp08.ExtProtectInterrogate(0, 0, 0))
 	want = swp08.ExtProtectTally(0, 0, 0, false, 9)
-	if got := c.next(); string(got) != string(want) {
+	if got := tally(); string(got) != string(want) {
 		t.Errorf("got % X want % X", got, want)
 	}
 }
@@ -550,6 +559,7 @@ func TestProtectInterrogate(t *testing.T) {
 func TestProtectConnectAndDisconnectLockTheHub(t *testing.T) {
 	r := newRig(t, true)
 	r.store.ApplyLocks(map[int]byte{2: 'O'})
+	time.Sleep(50 * time.Millisecond) // let the lock push go out before this client connects
 	c := r.dial()
 	c.send(swp08.ExtProtectConnect(0, 0, 1, 126))
 	c.send(swp08.ExtProtectDisconnect(0, 0, 2, 126))
@@ -569,6 +579,7 @@ func TestProtectConnectAndDisconnectLockTheHub(t *testing.T) {
 func TestProtectRefusalsSendNothing(t *testing.T) {
 	r := newRig(t, true)
 	r.store.ApplyLocks(map[int]byte{0: 'L', 1: 'O'})
+	time.Sleep(50 * time.Millisecond) // let the lock push go out before this client connects
 	c := r.dial()
 	c.send(swp08.ExtProtectDisconnect(0, 0, 0, 1)) // another client's lock
 	c.send(swp08.ExtProtectConnect(0, 0, 0, 1))
