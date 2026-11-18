@@ -286,3 +286,30 @@ func testLogf(t *testing.T) func(string, ...any) {
 		}
 	}
 }
+
+func TestLockAndUnlockOwn(t *testing.T) {
+	h := newHub(t, 4, 4, func(o *vhsim.Options) { o.Locks = []int{3} })
+	r := start(t, h, nil)
+	r.expect("up", kind(state.EvUp))
+	if err := r.c.Lock(1, true); err != nil {
+		t.Fatal(err)
+	}
+	r.expect("lock", func(e state.Event) bool { return e.Kind == state.EvLock && e.Out == 1 })
+	if got := r.st.Snapshot().Lock[1]; got != state.LockedOwn {
+		t.Fatalf("lock state %q", got)
+	}
+	if err := r.c.Lock(1, false); err != nil {
+		t.Fatal(err)
+	}
+	r.expect("unlock", func(e state.Event) bool { return e.Kind == state.EvLock && e.Out == 1 })
+	if state.Locked(r.st.Snapshot().Lock[1]) {
+		t.Fatal("still locked")
+	}
+	// A plain unlock of another client's lock is refused, never forced.
+	if err := r.c.Lock(3, false); err == nil {
+		t.Error("unlock of another client's lock accepted")
+	}
+	if err := r.c.Lock(9, true); err == nil {
+		t.Error("out of range accepted")
+	}
+}

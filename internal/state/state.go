@@ -24,6 +24,9 @@ func Locked(l byte) bool { return l == LockedOwn || l == LockedOther }
 // an EvRoute event, and only if it really changed.
 type Router interface {
 	Take(out, in int) error
+	// Lock takes (true) or drops (false) this client's lock on out. The new
+	// state arrives later as an EvLock event.
+	Lock(out int, lock bool) error
 }
 
 type EventKind int

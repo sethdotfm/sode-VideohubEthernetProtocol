@@ -20,7 +20,11 @@ const (
 	none         = 0xFFFF
 )
 
-type take struct{ out, in int }
+// take is one queued hub command: a route, or a lock change when lock is set.
+type take struct {
+	out, in int
+	lock    *bool
+}
 
 type Server struct {
 	store         *state.Store
@@ -253,7 +257,11 @@ func (s *Server) takeLoop(ctx context.Context) {
 			if !s.store.Snapshot().Up {
 				continue
 			}
-			if err := s.router.Take(t.out, t.in); err != nil {
+			if t.lock != nil {
+				if err := s.router.Lock(t.out, *t.lock); err != nil {
+					s.logf("lock %d %v: %v", t.out, *t.lock, err)
+				}
+			} else if err := s.router.Take(t.out, t.in); err != nil {
 				s.logf("take %d <- %d: %v", t.out, t.in, err)
 			}
 		}
